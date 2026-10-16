@@ -152,8 +152,13 @@ button[disabled]{opacity:.45;cursor:default}
 .name-seg button{font-weight:500}
 .name-seg button b{font-weight:800}
 /* Kopfleiste einklappen */
-.app.top-hidden .top{display:none}
-.show-top{margin-left:auto;padding:8px 9px}
+/* Eingeklappt: nur Zurück, Abspielen, Weiter und der Pfeil */
+.app.top-hidden .brand,.app.top-hidden #libBtn,.app.top-hidden #setBtn,.app.top-hidden #toolbar,.app.top-hidden #startBtn{display:none}
+.app.top-hidden .top{padding-block:6px}
+.top-toggle svg{transition:transform .15s}
+.app.top-hidden .top-toggle svg{transform:rotate(180deg)}
+.top .transport{order:-1}
+
 @media (max-width:640px){.lbl-t{display:none} .top .acts button,.top .acts .btn{padding:8px 9px}}
 @media (max-width:480px){.brand-t{display:none}}
 details.settings{font-size:14px}
@@ -206,7 +211,7 @@ select,input[type=number]{font:inherit;font-size:14px;padding:7px 8px;border-rad
     <div class="acts">
       <button id="libBtn" type="button" aria-label="Meine Stücke" title="Meine Stücke"><svg class="icon" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" aria-hidden="true"><path d="M9 18V5l11-2v13"/><circle cx="6" cy="18" r="3"/><circle cx="17" cy="16" r="3"/></svg><span class="lbl-t">Meine Stücke</span></button>
       <button id="setBtn" type="button" aria-label="Einstellungen" title="Einstellungen"><svg class="icon" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" aria-hidden="true"><circle cx="12" cy="12" r="3"/><path d="M19.4 15a1.7 1.7 0 0 0 .3 1.8l.1.1a2 2 0 1 1-2.8 2.8l-.1-.1a1.7 1.7 0 0 0-1.8-.3 1.7 1.7 0 0 0-1 1.5V21a2 2 0 1 1-4 0v-.1a1.7 1.7 0 0 0-1.1-1.5 1.7 1.7 0 0 0-1.8.3l-.1.1a2 2 0 1 1-2.8-2.8l.1-.1a1.7 1.7 0 0 0 .3-1.8 1.7 1.7 0 0 0-1.5-1H3a2 2 0 1 1 0-4h.1a1.7 1.7 0 0 0 1.5-1.1 1.7 1.7 0 0 0-.3-1.8l-.1-.1a2 2 0 1 1 2.8-2.8l.1.1a1.7 1.7 0 0 0 1.8.3H9a1.7 1.7 0 0 0 1-1.5V3a2 2 0 1 1 4 0v.1a1.7 1.7 0 0 0 1 1.5 1.7 1.7 0 0 0 1.8-.3l.1-.1a2 2 0 1 1 2.8 2.8l-.1.1a1.7 1.7 0 0 0-.3 1.8V9a1.7 1.7 0 0 0 1.5 1H21a2 2 0 1 1 0 4h-.1a1.7 1.7 0 0 0-1.5 1z"/></svg></button>
-      <button id="hideTop" type="button" aria-label="Leiste ausblenden" title="Leiste ausblenden"><svg class="icon" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.4"><path d="m6 15 6-6 6 6"/></svg></button>
+      <button id="topToggle" type="button" class="top-toggle" aria-expanded="true" aria-label="Menü einklappen" title="Menü einklappen"><svg class="icon" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.4"><path d="m6 15 6-6 6 6"/></svg></button>
     </div>
   </header>
 
@@ -349,7 +354,8 @@ select,input[type=number]{font:inherit;font-size:14px;padding:7px 8px;border-rad
         <button type="button" id="modePractice" aria-pressed="false">Üben</button>
         <button type="button" id="modePerform" aria-pressed="false">Durchspielen</button>
       </div>
-      <div class="transport">
+      <span id="transportHome" hidden></span>
+      <div class="transport" id="transport">
         <button type="button" id="startBtn" title="Zum Anfang" aria-label="Zum Anfang"><svg class="icon" viewBox="0 0 24 24" fill="currentColor"><path d="M6 5h2v14H6zM20 5v14L9 12z"/></svg></button>
         <button type="button" id="prevBtn" title="Zurück" aria-label="Zurück"><svg class="icon" viewBox="0 0 24 24" fill="currentColor"><path d="M15 5v14L5 12z"/></svg></button>
         <button type="button" id="playBtn" class="primary"><svg class="icon" id="playIco" viewBox="0 0 24 24" fill="currentColor"><path d="M7 4v16l13-8z"/></svg><span id="playTxt">Abspielen</span></button>
@@ -362,7 +368,6 @@ select,input[type=number]{font:inherit;font-size:14px;padding:7px 8px;border-rad
         <span class="num" id="tempoVal">100 %</span>
       </div>
       <div class="meter" id="meter" hidden title="Mikrofon-Pegel"><i></i></div>
-      <button type="button" id="showTop" class="show-top" hidden aria-label="Leiste einblenden" title="Leiste einblenden"><svg class="icon" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.4"><path d="m6 9 6 6 6-6"/></svg></button>
     </div>
   </section>
 
@@ -412,7 +417,7 @@ select,input[type=number]{font:inherit;font-size:14px;padding:7px 8px;border-rad
 <script>
 (() => {
 "use strict";
-const APP_VERSION = "9.8";
+const APP_VERSION = "9.9";
 const $ = id => document.getElementById(id);
 const NAMES = ["C","Cis","D","Dis","E","F","Fis","G","Gis","A","B","H"];
 const isAcc = m => [1,3,6,8,10].includes(((m % 12) + 12) % 12);
@@ -1546,13 +1551,19 @@ $("setBtn").onclick = openSettings;
 $("setClose").onclick = closeSettings;
 $("setWin").addEventListener("click", e => { if (e.target === $("setWin")) closeSettings(); });
 document.addEventListener("keydown", e => { if (e.key === "Escape" && !$("setWin").hidden) closeSettings(); });
-function setTopHidden(h) {
-  $("app").classList.toggle("top-hidden", h); $("showTop").hidden = !h; store.set("topHidden", h);
-  if (osmd) setTimeout(() => { try { osmd.render(); } catch {} }, 50);
+// Eingeklappt wandern Zurück/Abspielen/Weiter in die obere Leiste, alles andere wird ausgeblendet
+function setTopHidden(h, quiet) {
+  $("app").classList.toggle("top-hidden", h);
+  const tr = $("transport");
+  if (h) $("topBar").insertBefore(tr, $("topBar").firstChild);
+  else $("transportHome").after(tr);
+  const t = $("topToggle");
+  t.setAttribute("aria-expanded", String(!h));
+  t.setAttribute("aria-label", h ? "Menü aufklappen" : "Menü einklappen"); t.title = t.getAttribute("aria-label");
+  if (!quiet) { store.set("topHidden", h); if (osmd) setTimeout(() => { try { osmd.render(); } catch {} }, 50); }
 }
-$("hideTop").onclick = () => setTopHidden(true);
-$("showTop").onclick = () => setTopHidden(false);
-if (store.get("topHidden", false)) { $("app").classList.add("top-hidden"); $("showTop").hidden = false; }
+$("topToggle").onclick = () => setTopHidden(!$("app").classList.contains("top-hidden"));
+if (store.get("topHidden", false)) setTopHidden(true, true);
 function openLib() { $("lib").hidden = false; renderLib(); setTimeout(() => $("libClose").focus(), 0); }
 function closeLib() { $("lib").hidden = true; }
 $("libBtn").onclick = openLib;
