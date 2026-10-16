@@ -146,6 +146,11 @@ button[disabled]{opacity:.45;cursor:default}
 .ver{display:flex;align-items:center;gap:10px;flex-wrap:wrap}
 .ver button{padding:5px 9px;font-size:13px}
 .update-bar{position:fixed;z-index:35;left:50%;transform:translateX(-50%);bottom:calc(env(safe-area-inset-bottom, 0px) + 14px);display:flex;align-items:center;gap:12px;background:var(--ink);color:var(--surface);padding:10px 12px 10px 16px;border-radius:12px;box-shadow:0 6px 24px rgba(0,0,0,.3);max-width:calc(100% - 32px);font-weight:600}
+.field{display:flex;flex-direction:column;gap:6px}
+.field-lbl{font-size:12px;color:var(--muted);font-weight:600}
+.field-sub{font-size:12px;color:var(--muted);line-height:1.4}
+.name-seg button{font-weight:500}
+.name-seg button b{font-weight:800}
 /* Kopfleiste einklappen */
 .app.top-hidden .top{display:none}
 .show-top{margin-left:auto;padding:8px 9px}
@@ -235,12 +240,14 @@ select,input[type=number]{font:inherit;font-size:14px;padding:7px 8px;border-rad
         <section class="set-group">
           <h3>Tonnamen und Vorzeichen</h3>
           <div class="grid">
-            <label>Tonnamen auf Platten und im Notenblatt
-              <select id="nameMode">
-                <option value="played">Gespielter Ton (z. B. Ces, Platten heißen genauso)</option>
-                <option value="line">Wie auf der Notenlinie (z. B. C, Marimba mit normalen Namen)</option>
-              </select>
-            </label>
+            <div class="field">
+              <span class="field-lbl" id="nameModeLbl">Tonnamen auf Platten und im Notenblatt</span>
+              <div class="seg name-seg" role="group" aria-labelledby="nameModeLbl">
+                <button type="button" data-mode="played" aria-pressed="true"><b>Mit</b>&nbsp;Vorzeichen</button>
+                <button type="button" data-mode="line" aria-pressed="false"><b>Ohne</b>&nbsp;Vorzeichen</button>
+              </div>
+              <span class="field-sub" id="nameModeSub"></span>
+            </div>
             <label class="inline"><input type="checkbox" id="showNames"> Tonnamen unter den Noten anzeigen</label>
           </div>
           <p class="hint" id="keyHint"></p>
@@ -405,7 +412,7 @@ select,input[type=number]{font:inherit;font-size:14px;padding:7px 8px;border-rad
 <script>
 (() => {
 "use strict";
-const APP_VERSION = "9.7";
+const APP_VERSION = "9.8";
 const $ = id => document.getElementById(id);
 const NAMES = ["C","Cis","D","Dis","E","F","Fis","G","Gis","A","B","H"];
 const isAcc = m => [1,3,6,8,10].includes(((m % 12) + 12) % 12);
@@ -1301,7 +1308,14 @@ $("tempo").oninput = e => {
   $("lo").value = S.lo; $("hi").value = S.hi;
   $("customWrap").hidden = S.range !== "custom";
 })();
-$("nameMode").value = S.nameMode; $("showNames").checked = S.showNames;
+$("showNames").checked = S.showNames;
+function updNameSeg() {
+  document.querySelectorAll(".name-seg button").forEach(b => b.setAttribute("aria-pressed", b.dataset.mode === S.nameMode));
+  $("nameModeSub").textContent = S.nameMode === "played"
+    ? "Unter der Note und auf der Platte steht der Ton mit Vorzeichen, z. B. Ces."
+    : "Unter der Note steht der Buchstabe der Notenlinie, z. B. C. Die Platten haben normale Namen.";
+}
+updNameSeg();
 async function namesChanged() {
   if (S.source === "xml" && S.rawXml) {
     const i = S.idx, from = $("fromM").value, to = $("toM").value;
@@ -1310,7 +1324,10 @@ async function namesChanged() {
   } else { buildMarimba(); setCurrent(S.idx); }
   keyHint();
 }
-$("nameMode").onchange = e => { S.nameMode = e.target.value; store.set("nameMode", S.nameMode); namesChanged(); };
+document.querySelectorAll(".name-seg button").forEach(b => b.onclick = () => {
+  if (S.nameMode === b.dataset.mode) return;
+  S.nameMode = b.dataset.mode; store.set("nameMode", S.nameMode); updNameSeg(); namesChanged();
+});
 $("showNames").onchange = e => { S.showNames = e.target.checked; store.set("showNames", S.showNames); namesChanged(); };
 function keyHint() {
   const f = S.keyFifths || 0, n = Math.abs(f);
@@ -1319,7 +1336,7 @@ function keyHint() {
   $("keyHint").textContent = !S.events.length ? "" : n === 0
     ? "Dieses Stück hat keine Vorzeichen (C-Dur oder a-Moll)."
     : "Vorzeichen dieses Stücks: " + n + (f > 0 ? " ♯ (" : " ♭ (") + list.join(", ") + "), also " + key + " oder die parallele Moll-Tonart." +
-      (S.nameMode === "played" ? " Die Platten tragen die Namen, wie sie im Stück geschrieben sind." : " Unter den Noten steht der Buchstabe der Notenlinie. Die Vorzeichen musst du selbst beachten.");
+      (S.nameMode === "played" ? " Die Platten tragen die Namen, wie sie im Stück geschrieben sind." : " Ohne Vorzeichen: Die Vorzeichen musst du beim Spielen selbst beachten.");
 }
 function rangeChanged() {
   $("customWrap").hidden = S.range !== "custom";
