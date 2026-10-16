@@ -318,6 +318,7 @@ select,input[type=number]{font:inherit;font-size:14px;padding:7px 8px;border-rad
             </label>
             <label class="inline"><input type="checkbox" id="sound" checked> Ton beim Vorspielen und Antippen</label>
             <label class="inline"><input type="checkbox" id="metro"> Metronom beim Durchspielen hörbar</label>
+            <label class="inline"><input type="checkbox" id="rollLong"> Lange und gebundene Noten als Wirbel spielen</label>
           </div>
           <p class="hint" id="outHint"></p>
         </section>
@@ -417,7 +418,7 @@ select,input[type=number]{font:inherit;font-size:14px;padding:7px 8px;border-rad
 <script>
 (() => {
 "use strict";
-const APP_VERSION = "9.9";
+const APP_VERSION = "9.10";
 const $ = id => document.getElementById(id);
 const NAMES = ["C","Cis","D","Dis","E","F","Fis","G","Gis","A","B","H"];
 const isAcc = m => [1,3,6,8,10].includes(((m % 12) + 12) % 12);
@@ -533,7 +534,7 @@ const store = {
 const S = {
   events: [], idx: 0, mode: "play", playing: false, tempo: 100, bpm: 80, beatsPerBar: 4,
   range: store.get("range", "auto"), size: store.get("size", "26"), sens: store.get("sens", 6),
-  octFree: store.get("octFree", false), sound: store.get("sound", true), metro: store.get("metro", false),
+  octFree: store.get("octFree", false), sound: store.get("sound", true), metro: store.get("metro", false), rollLong: store.get("rollLong", false),
   strict: store.get("strict", "normal"), lo: store.get("lo", 45), hi: store.get("hi", 96), autoRange: null,
   nameMode: store.get("nameMode", "played") === "line" ? "line" : "played", showNames: store.get("showNames", true), spell: {}, keyFifths: 0, keyAltered: new Set(), rawXml: null, rawName: "",
   vol: store.get("vol", 80), outDelay: store.get("outDelay", "auto"), sinkId: store.get("sinkId", ""),
@@ -568,11 +569,19 @@ function audio() {
   if (ctx.state === "suspended") ctx.resume();
   return ctx;
 }
-function strike(m, vel = 0.8) {
+const voices = [];   // geplante Töne, damit „Pause“ auch laufende Wirbel sofort beendet
+function hush() {
+  if (!ctx) return;
+  const now = ctx.currentTime;
+  voices.splice(0).forEach(v => { try { v.g.gain.cancelScheduledValues(now); v.g.gain.setTargetAtTime(0.0001, now, 0.02); v.o.stop(now + 0.1); } catch {} });
+}
+// hold: Sekunden, die ein gebundener Ton klingen soll (Haltebogen)
+function strike(m, vel = 0.8, at, hold) {
   if (!S.sound) return;
-  const c = audio(), t = c.currentTime + 0.005;
+  const c = audio(), t = at || c.currentTime + 0.005;
   const f = 440 * Math.pow(2, (m - 69) / 12);
-  const dec = Math.max(0.25, Math.min(1.7, 1.7 - (m - 36) / 60 * 1.4));
+  const nat = Math.max(0.25, Math.min(1.7, 1.7 - (m - 36) / 60 * 1.4));
+  const dec = hold ? Math.min(8, Math.max(nat, hold * 1.15)) : nat;
   // Marimba: Grundton stark, erster Oberton bei ca. 4-facher Frequenz (zwei Oktaven höher)
   [[1, 1, dec], [3.93, 0.16, dec * 0.3], [9.2, 0.04, dec * 0.12]].forEach(([r, a, d]) => {
     if (f * r > 14000) return;
@@ -582,7 +591,19 @@ function strike(m, vel = 0.8) {
     g.gain.linearRampToValueAtTime(vel * a * 0.6, t + 0.004);
     g.gain.exponentialRampToValueAtTime(0.0001, t + d);
     o.connect(g); g.connect(master); o.start(t); o.stop(t + d + 0.05);
+    voices.push({ o, g, end: t + d + 0.05 });
   });
+  if (voices.length > 600) { const now = c.currentTime; for (let i = voices.length - 1; i >= 0; i--) if (voices[i].end < now) voices.splice(i, 1); }
+}
+// Wirbel: schnelle, abwechselnde Schläge über die ganze Notenlänge
+function roll(m, vel, durSec) {
+  if (!S.sound) return;
+  const c = audio(), t0r = c.currentTime + 0.005, rate = 1 / 14;
+  const n = Math.max(3, Math.floor(Math.max(0.15, durSec - 0.04) / rate));
+  for (let k = 0; k < n; k++) {
+    const v = vel * (k % 2 ? 0.62 : 0.7) * (0.92 + Math.random() * 0.12);
+    strike(m, v, t0r + k * rate + (k % 2 ? 0.006 : 0));
+  }
 }
 function click(accent, when) {
   const c = audio(), t = when || c.currentTime + 0.005;
@@ -700,7 +721,7 @@ async function loadXML(data, name) {
   sheet.SourceMeasures.forEach((m, mi) => {
     const bpm = m.TempoInBPM || base, mStart = m.AbsoluteTimestamp.RealValue * 4;
     m.VerticalSourceStaffEntryContainers.forEach(c => {
-      const notes = new Set(), src = [];
+      const notes = new Set(), src = [], info = {};
       c.StaffEntries.forEach(se => {
         if (!se) return;
         se.VoiceEntries.forEach(ve => {
@@ -711,13 +732,18 @@ async function loadXML(data, name) {
             const mid = n.halfTone + 12;
             notes.add(mid); src.push(n);
             try {
+              const len = (n.NoteTie && n.NoteTie.Duration ? n.NoteTie.Duration.RealValue : n.Length.RealValue) * 4;
+              const tr = n.TremoloInfo || {};
+              info[mid] = { beats: len, tied: !!n.NoteTie, roll: !!(n.TremoloStrokes || tr.tremoloStrokes || tr.tremoloUnmeasured) };
+            } catch {}
+            try {
               const nm = gerName(n.Pitch.FundamentalNote, n.Pitch.AccidentalHalfTones);
               if (nm) { const c2 = counts[pc(mid)] = counts[pc(mid)] || {}; c2[nm] = (c2[nm] || 0) + 1; }
             } catch {}
           });
         });
       });
-      if (notes.size) evs.push({ beat: mStart + c.Timestamp.RealValue * 4, inBar: c.Timestamp.RealValue * 4, notes: [...notes].sort((a, b) => a - b), src, measure: mi + 1, bpm });
+      if (notes.size) evs.push({ beat: mStart + c.Timestamp.RealValue * 4, inBar: c.Timestamp.RealValue * 4, notes: [...notes].sort((a, b) => a - b), src, info, measure: mi + 1, bpm });
     });
   });
   evs.sort((a, b) => a.beat - b.beat);
@@ -758,8 +784,8 @@ function buildMidiEvents() {
   const evs = [];
   notes.forEach(n => {
     const last = evs[evs.length - 1];
-    if (last && n.time - last.sec < 0.03) { if (!last.notes.includes(n.midi)) last.notes.push(n.midi); }
-    else evs.push({ sec: n.time, beat: n.ticks / ppq, notes: [n.midi] });
+    if (last && n.time - last.sec < 0.03) { if (!last.notes.includes(n.midi)) { last.notes.push(n.midi); last.info[n.midi] = { beats: n.durationTicks / ppq }; } }
+    else evs.push({ sec: n.time, beat: n.ticks / ppq, notes: [n.midi], info: { [n.midi]: { beats: n.durationTicks / ppq } } });
   });
   S.bpm = Math.round(midi.header.tempos[0] ? midi.header.tempos[0].bpm : 120);
   evs.forEach(e => { e.notes.sort((a, b) => a - b); e.measure = Math.floor(e.beat / perBar + 1e-6) + 1; e.inBar = e.beat - (e.measure - 1) * perBar; e.bpm = S.bpm; });
@@ -918,10 +944,19 @@ function play() {
   };
   raf = requestAnimationFrame(tick);
 }
-function sound(e) { e.notes.forEach(m => strike(m, e.notes.length > 1 ? 0.6 : 0.8)); }
+function sound(e) {
+  const vel = e.notes.length > 1 ? 0.6 : 0.8, beatSec = 60 / (e.bpm || S.bpm) / factor();
+  e.notes.forEach(m => {
+    const inf = (e.info && e.info[m]) || {};
+    const durSec = (inf.beats || 1) * beatSec;
+    const longRoll = S.rollLong && (inf.tied || (inf.beats || 0) >= 2);
+    if (inf.roll || longRoll) roll(m, vel * 0.85, durSec);
+    else strike(m, vel, null, inf.tied || (inf.beats || 0) >= 2 ? durSec : 0);
+  });
+}
 function lateFlash(e) { setTimeout(() => flash(e.notes, "hit", 120), outLat() * 1000); }
 function stopPlay() {
-  S.playing = false; cancelAnimationFrame(raf); updPlayBtn();
+  S.playing = false; cancelAnimationFrame(raf); updPlayBtn(); hush();
   try { wake && wake.release(); } catch {} wake = null;
 }
 function stopAll() {
@@ -1398,6 +1433,8 @@ fillSinks().then(ok => {
     : ok ? "Wähle oben den Lautsprecher. Stehen dort keine Namen, erscheinen sie, sobald du das Mikrofon einmal erlaubt hast. Bei Bluetooth-Lautsprechern die Verzögerung mit „Testen“ abgleichen."
          : "Den Lautsprecher wählst du in den Ton-Einstellungen deines Geräts. Bei Bluetooth- oder AirPlay-Lautsprechern die Verzögerung mit „Testen“ abgleichen.";
 });
+$("rollLong").checked = S.rollLong;
+$("rollLong").onchange = e => { S.rollLong = e.target.checked; store.set("rollLong", S.rollLong); };
 $("metro").onchange = e => { S.metro = e.target.checked; store.set("metro", S.metro); };
 $("strict").onchange = e => { S.strict = e.target.value; store.set("strict", S.strict); };
 $("track").onchange = () => { stopAll(); buildMidiEvents(); savePieceSettings(); };
