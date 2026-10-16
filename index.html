@@ -233,6 +233,14 @@ select,input[type=number]{font:inherit;font-size:14px;padding:7px 8px;border-rad
       </div>
       <div class="set-body">
         <section class="set-group">
+          <h3>Vorzeichen</h3>
+          <div class="grid">
+            <label class="inline"><input type="checkbox" id="labelPiece"> Namen wie im Stück (z. B. Es statt Dis)</label>
+            <label class="inline"><input type="checkbox" id="dimKey"> Vorzeichen anzeigen (nicht gespielte Platten abdunkeln)</label>
+          </div>
+          <p class="hint" id="keyHint"></p>
+        </section>
+        <section class="set-group">
           <h3>Stück</h3>
           <div class="grid">
             <label>Takte üben (von – bis)
@@ -258,8 +266,6 @@ select,input[type=number]{font:inherit;font-size:14px;padding:7px 8px;border-rad
             <label id="customWrap" hidden>Tiefste und höchste Platte
               <span class="pair"><select id="lo" aria-label="Tiefste Platte"></select> – <select id="hi" aria-label="Höchste Platte"></select></span>
             </label>
-            <label class="inline"><input type="checkbox" id="labelPiece"> Namen wie im Stück (z. B. Es statt Dis)</label>
-            <label class="inline"><input type="checkbox" id="dimKey"> Vorzeichen anzeigen (nicht gespielte Platten abdunkeln)</label>
             <label>Plattengröße auf dem Bildschirm
               <select id="size">
                 <option value="20">Klein</option>
@@ -268,7 +274,6 @@ select,input[type=number]{font:inherit;font-size:14px;padding:7px 8px;border-rad
               </select>
             </label>
           </div>
-          <p class="hint" id="keyHint"></p>
         </section>
         <section class="set-group">
           <h3>Ton</h3>
@@ -394,7 +399,7 @@ select,input[type=number]{font:inherit;font-size:14px;padding:7px 8px;border-rad
 <script>
 (() => {
 "use strict";
-const APP_VERSION = "9.3";
+const APP_VERSION = "9.4";
 const $ = id => document.getElementById(id);
 const NAMES = ["C","Cis","D","Dis","E","F","Fis","G","Gis","A","B","H"];
 const isAcc = m => [1,3,6,8,10].includes(((m % 12) + 12) % 12);
