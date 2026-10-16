@@ -224,12 +224,17 @@ select,input[type=number]{font:inherit;font-size:14px;padding:7px 8px;border-rad
     <details class="settings" id="settings">
       <summary><svg class="icon" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><path d="M4 6h10M18 6h2M4 12h4M12 12h8M4 18h12"/><circle cx="16" cy="6" r="2"/><circle cx="10" cy="12" r="2"/><circle cx="18" cy="18" r="2"/></svg>Einstellungen</summary>
       <div class="grid">
-        <label>Tonumfang deiner Marimba
+        <label>Marimba-Bereich
           <select id="range">
+            <option value="auto">Automatisch nach Stück</option>
+            <option value="custom">Eigener Bereich</option>
             <option value="4.3">4⅓ Oktaven (A2 – C7)</option>
             <option value="5">5 Oktaven (C2 – C7)</option>
             <option value="4">4 Oktaven (C3 – C7)</option>
           </select>
+        </label>
+        <label id="customWrap" hidden>Tiefste und höchste Platte
+          <span class="pair"><select id="lo" aria-label="Tiefste Platte"></select> – <select id="hi" aria-label="Höchste Platte"></select></span>
         </label>
         <label>Plattengröße auf dem Bildschirm
           <select id="size">
@@ -277,6 +282,20 @@ const NAMES = ["C","Cis","D","Dis","E","F","Fis","G","Gis","A","B","H"];
 const isAcc = m => [1,3,6,8,10].includes(((m % 12) + 12) % 12);
 const noteName = m => NAMES[m % 12] + (Math.floor(m / 12) - 1);
 const RANGES = { "4.3": [45, 96], "5": [36, 96], "4": [48, 96] };
+const natDown = m => isAcc(m) ? m - 1 : m, natUp = m => isAcc(m) ? m + 1 : m;
+function dispRange() {
+  if (S.range === "custom") return [Math.min(S.lo, S.hi), Math.max(S.lo, S.hi)];
+  if (S.range === "auto") return S.autoRange || RANGES["4.3"];
+  return RANGES[S.range] || RANGES["4.3"];
+}
+function detRange() { const [lo, hi] = dispRange(); return [Math.max(21, lo - 12), Math.min(108, hi + 12)]; }
+function computeAuto() {
+  const all = S.events.flatMap(e => e.notes);
+  if (!all.length) { S.autoRange = null; return; }
+  let lo = natDown(Math.min(...all) - 2), hi = natUp(Math.max(...all) + 2);
+  while (hi - lo < 12) { lo = natDown(lo - 1); if (hi - lo < 12) hi = natUp(hi + 1); }
+  S.autoRange = [Math.max(21, lo), Math.min(108, hi)];
+}
 const COL = { cur: "#1287d6", ok: "#17914c", rhythm: "#c27c00", wrong: "#d23a3a", missed: "#7b56d6" };
 const LATENCY = 0.04; // Sekunden, Ausgleich für Mikrofon und Erkennung
 
@@ -288,9 +307,9 @@ const store = {
 
 const S = {
   events: [], idx: 0, mode: "play", playing: false, tempo: 100, bpm: 80, beatsPerBar: 4,
-  range: store.get("range", "4.3"), size: store.get("size", "26"), sens: store.get("sens", 6),
+  range: store.get("range", "auto"), size: store.get("size", "26"), sens: store.get("sens", 6),
   octFree: store.get("octFree", false), sound: store.get("sound", true), metro: store.get("metro", false),
-  strict: store.get("strict", "normal"),
+  strict: store.get("strict", "normal"), lo: store.get("lo", 45), hi: store.get("hi", 96), autoRange: null,
   hits: 0, misses: 0, source: null, midi: null, heard: [], micOn: false,
   evColor: new Map(), curEv: -1, run: null, result: null
 };
@@ -339,7 +358,7 @@ function click(accent, when) {
 /* ---------- Marimba zeichnen ---------- */
 const bars = new Map();
 function buildMarimba() {
-  const [lo, hi] = RANGES[S.range];
+  const [lo, hi] = dispRange();
   const W = +S.size, gap = Math.round(W * 0.14);
   const NMAX = W * 3.0, NMIN = W * 1.8, AMAX = W * 1.95, AMIN = W * 1.2, RAIL = Math.round(W * 0.3);
   const el = $("marimba"); el.innerHTML = ""; bars.clear();
@@ -367,7 +386,7 @@ function buildMarimba() {
   }
   markTargets();
 }
-function inRange(m) { const [lo, hi] = RANGES[S.range]; return m >= lo && m <= hi; }
+function inRange(m) { const [lo, hi] = dispRange(); return m >= lo && m <= hi; }
 function flash(ms, cls, dur = 450) {
   ms.forEach(m => { const b = bars.get(m); if (!b) return; b.classList.add(cls); setTimeout(() => b.classList.remove(cls), dur); });
 }
@@ -506,11 +525,12 @@ function buildMidiEvents() {
 
 function afterLoad() {
   S.idx = 0; S.hits = 0; S.misses = 0; S.curEv = -1; updScore();
-  const out = new Set(); S.events.forEach(e => e.notes.forEach(m => { if (!inRange(m)) out.add(m); }));
   if (!S.events.length) { setMsg("Keine spielbaren Noten gefunden.", "bad"); return; }
-  setMsg(out.size ? out.size + " Töne liegen außerhalb des Tonumfangs (" + [...out].sort((a, b) => a - b).slice(0, 4).map(noteName).join(", ") + (out.size > 4 ? " …" : "") + ") und werden nicht bewertet." : S.events.length + " Schläge geladen, " + S.bpm + " Schläge pro Minute.");
+  computeAuto();
+  buildMarimba();
   updTempo();
   setCurrent(loopStart());
+  rangeMsg();
 }
 
 /* ---------- Farben im Notenblatt ---------- */
@@ -719,7 +739,7 @@ function finishRun(early, silent) {
 function evaluate(run, last) {
   const f = factor(), tol = { loose: [0.35, 0.18], normal: [0.25, 0.12], strict: [0.15, 0.07] }[S.strict];
   const onsets = run.onsets.slice().sort((x, y) => x.sec - y.sec).map(o => Object.assign(o, { used: false }));
-  const [lo, hi] = RANGES[S.range];
+  const [lo, hi] = detRange();
   const scoreOf = (o, x) => {
     if (!S.octFree) return o.s[x] || 0;
     let b = 0; for (let m = lo; m <= hi; m++) if (m % 12 === x % 12 && (o.s[m] || 0) > b) b = o.s[m]; return b;
@@ -911,7 +931,7 @@ function micUnavailable() {
 }
 function scan() {
   anBig.getFloatFrequencyData(spec);
-  const [lo, hi] = RANGES[S.range], binHz = ctx.sampleRate / anBig.fftSize, out = {};
+  const [lo, hi] = detRange(), binHz = ctx.sampleRate / anBig.fftSize, out = {};
   for (let m = lo - 1; m <= hi + 1; m++) {
     const f = 440 * Math.pow(2, (m - 69) / 12), b = f / binHz;
     let mx = -200;
@@ -925,7 +945,7 @@ function accum(o) {
   for (const m in s) o.acc[m] = (o.acc[m] || 0) + Math.max(0, s[m] - o.base[m] * 0.8);
 }
 function analyze(acc) {
-  const [lo, hi] = RANGES[S.range], s = {};
+  const [lo, hi] = detRange(), s = {};
   for (let m = lo; m <= hi; m++) {
     let v = acc[m] || 0;
     if (acc[m - 24] > 0.15 * v) v *= 0.25;      // Oberton zwei Oktaven über einem tieferen Ton
@@ -945,7 +965,7 @@ function handleOnset(o) {
   if (S.run) { recordOnset(o.t, an); return; }
   if (S.mode !== "practice") return;
   const e = S.events[S.idx]; if (!e) return;
-  const exp = playable(e), [lo, hi] = RANGES[S.range];
+  const exp = playable(e), [lo, hi] = detRange();
   const score = x => { if (!S.octFree) return an.s[x] || 0; let b = 0; for (let m = lo; m <= hi; m++) if (m % 12 === x % 12 && an.s[m] > b) b = an.s[m]; return b; };
   const present = exp.filter(x => score(x) >= 0.4 * an.max);
   if (present.length) { register(present, "mic"); return; }
@@ -1009,7 +1029,26 @@ $("tempo").oninput = e => {
   S.tempo = +e.target.value; updTempo();
   if (S.playing) t0 = now - (st / factor()) * 1000;
 };
-$("range").onchange = e => { S.range = e.target.value; store.set("range", S.range); buildMarimba(); setCurrent(S.idx); };
+(() => {
+  const opts = []; for (let m = 21; m <= 108; m++) if (!isAcc(m)) opts.push('<option value="' + m + '">' + noteName(m) + "</option>");
+  $("lo").innerHTML = opts.join(""); $("hi").innerHTML = opts.join("");
+  $("lo").value = S.lo; $("hi").value = S.hi;
+  $("customWrap").hidden = S.range !== "custom";
+})();
+function rangeChanged() {
+  $("customWrap").hidden = S.range !== "custom";
+  buildMarimba(); setCurrent(S.idx); rangeMsg();
+}
+function rangeMsg() {
+  if (!S.events.length) return;
+  const [lo, hi] = dispRange();
+  const out = new Set(); S.events.forEach(e => e.notes.forEach(m => { if (!inRange(m)) out.add(m); }));
+  setMsg("Marimba zeigt " + noteName(lo) + " bis " + noteName(hi) + (S.range === "auto" ? " (passend zum Stück)." : ".") +
+    (out.size ? " " + out.size + " Töne liegen außerhalb (" + [...out].sort((a, b) => a - b).slice(0, 4).map(noteName).join(", ") + (out.size > 4 ? " …" : "") + ") und werden nicht bewertet." : ""), out.size ? "bad" : "");
+}
+$("range").onchange = e => { S.range = e.target.value; store.set("range", S.range); rangeChanged(); };
+$("lo").onchange = e => { S.lo = +e.target.value; if (S.lo >= S.hi) { S.hi = natUp(S.lo + 12); $("hi").value = S.hi; store.set("hi", S.hi); } store.set("lo", S.lo); rangeChanged(); };
+$("hi").onchange = e => { S.hi = +e.target.value; if (S.hi <= S.lo) { S.lo = natDown(S.hi - 12); $("lo").value = S.lo; store.set("lo", S.lo); } store.set("hi", S.hi); rangeChanged(); };
 $("size").onchange = e => { S.size = e.target.value; store.set("size", S.size); buildMarimba(); setCurrent(S.idx); };
 $("sens").oninput = e => { S.sens = +e.target.value; store.set("sens", S.sens); };
 $("octFree").onchange = e => { S.octFree = e.target.checked; store.set("octFree", S.octFree); };
