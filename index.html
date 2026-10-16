@@ -233,10 +233,15 @@ select,input[type=number]{font:inherit;font-size:14px;padding:7px 8px;border-rad
       </div>
       <div class="set-body">
         <section class="set-group">
-          <h3>Vorzeichen</h3>
+          <h3>Tonnamen und Vorzeichen</h3>
           <div class="grid">
-            <label class="inline"><input type="checkbox" id="labelPiece"> Namen wie im Stück (z. B. Es statt Dis)</label>
-            <label class="inline"><input type="checkbox" id="dimKey"> Vorzeichen anzeigen (nicht gespielte Platten abdunkeln)</label>
+            <label>Tonnamen auf Platten und im Notenblatt
+              <select id="nameMode">
+                <option value="notated">Wie notiert (Vorzeichen eingerechnet, z. B. H statt B)</option>
+                <option value="played">Gespielter Ton (z. B. B)</option>
+              </select>
+            </label>
+            <label class="inline"><input type="checkbox" id="showNames"> Tonnamen unter den Noten anzeigen</label>
           </div>
           <p class="hint" id="keyHint"></p>
         </section>
@@ -396,16 +401,19 @@ select,input[type=number]{font:inherit;font-size:14px;padding:7px 8px;border-rad
 
 <script src="https://cdn.jsdelivr.net/npm/opensheetmusicdisplay@1.8.9/build/opensheetmusicdisplay.min.js"></script>
 <script src="https://cdn.jsdelivr.net/npm/@tonejs/midi@2.0.28/build/Midi.js"></script>
+<script src="https://cdnjs.cloudflare.com/ajax/libs/jszip/3.10.1/jszip.min.js"></script>
 <script>
 (() => {
 "use strict";
-const APP_VERSION = "9.4";
+const APP_VERSION = "9.5";
 const $ = id => document.getElementById(id);
 const NAMES = ["C","Cis","D","Dis","E","F","Fis","G","Gis","A","B","H"];
 const isAcc = m => [1,3,6,8,10].includes(((m % 12) + 12) % 12);
 // Deutsche Notennamen. Im Modus „Wie im Stück“ heißen die Halbton-Platten so, wie das Stück sie schreibt (z. B. Es statt Dis).
 const pc = m => ((m % 12) + 12) % 12;
-const pcName = m => (S.label === "piece" && S.spell[pc(m)]) || NAMES[pc(m)];
+// Variante „Wie notiert“: Platten, die durch die Vorzeichen am Anfang ersetzt werden, tragen den notierten Namen
+// (in F-Dur heißt die B-Platte „H“, die echte H-Platte „H♮“). Variante „Gespielter Ton“: echter Name (B, Es, Cis …).
+const pcName = m => (S.nameMode === "notated" && S.notated[pc(m)]) || S.spell[pc(m)] || NAMES[pc(m)];
 const noteName = m => pcName(m) + (Math.floor(m / 12) - 1);
 const LETTERS = { 0: "C", 2: "D", 4: "E", 5: "F", 7: "G", 9: "A", 11: "H" };
 function gerName(fund, alt) {
@@ -431,6 +439,64 @@ function buildSpelling(fifths, counts) {
   S.keyFifths = fifths;
   const n = Math.min(7, Math.abs(fifths));
   S.keyAltered = new Set((fifths > 0 ? SHARP_ORDER : FLAT_ORDER).slice(0, n));
+  const no = {};
+  S.keyAltered.forEach(L => { no[L] = LETTERS[L] + "♮"; });
+  S.keyAltered.forEach(L => { no[pc(L + (fifths > 0 ? 1 : -1))] = LETTERS[L]; });
+  S.notated = no;
+}
+const STEP_PC = { C: 0, D: 2, E: 4, F: 5, G: 7, A: 9, B: 11 };
+// MusicXML lesen: Vorzeichen und Schreibweisen, bei Bedarf Tonnamen als eigene Textzeile unter die Noten schreiben
+function prepareXml(text) {
+  let doc;
+  try { doc = new DOMParser().parseFromString(text, "application/xml"); } catch { return text; }
+  if (!doc || doc.getElementsByTagName("parsererror").length) return text;
+  const k = doc.querySelector("key > fifths");
+  const fifths = k ? parseInt(k.textContent, 10) || 0 : 0;
+  const counts = {}, groups = [];
+  let cur = null;
+  doc.querySelectorAll("note").forEach(n => {
+    const p = n.querySelector("pitch");
+    const isChord = !!n.querySelector("chord");
+    if (!isChord) cur = null;
+    if (!p || n.querySelector("grace")) return;
+    const step = (p.querySelector("step") || {}).textContent, oct = parseInt((p.querySelector("octave") || {}).textContent, 10);
+    const alt = Math.round(parseFloat((p.querySelector("alter") || {}).textContent || "0")) || 0;
+    if (!(step in STEP_PC) || isNaN(oct)) return;
+    const midi = (oct + 1) * 12 + STEP_PC[step] + alt;
+    const spelled = gerName(STEP_PC[step], alt);
+    if (spelled) { const c = counts[pc(midi)] = counts[pc(midi)] || {}; c[spelled] = (c[spelled] || 0) + 1; }
+    const ties = [...n.querySelectorAll("tie")].map(t => t.getAttribute("type"));
+    const tieCont = ties.includes("stop") && !ties.includes("start");
+    if (!cur) { cur = { el: n, items: [] }; groups.push(cur); }
+    if (!tieCont) cur.items.push({ midi, spelled });
+  });
+  buildSpelling(fifths, counts);
+  if (!S.showNames) return text;
+  groups.forEach(g => {
+    if (!g.items.length) return;
+    const txt = g.items.sort((a, b) => a.midi - b.midi).map(it => S.nameMode === "notated" ? pcName(it.midi) : (it.spelled || pcName(it.midi))).join("/");
+    const ly = doc.createElement("lyric");
+    ly.setAttribute("number", "9"); ly.setAttribute("name", "Ton");
+    const sy = doc.createElement("syllabic"); sy.textContent = "single";
+    const tx = doc.createElement("text"); tx.textContent = txt;
+    ly.append(sy, tx);
+    const before = g.el.querySelector("play, listen");
+    if (before) g.el.insertBefore(ly, before); else g.el.appendChild(ly);
+  });
+  const out = new XMLSerializer().serializeToString(doc);
+  return out.startsWith("<?xml") ? out : '<?xml version="1.0" encoding="UTF-8"?>\n' + out;
+}
+// .mxl ist ein ZIP-Archiv: die eigentliche Notendatei herausholen
+async function mxlToXml(bin) {
+  if (!window.JSZip) throw new Error("nozip");
+  const u8 = new Uint8Array(bin.length); for (let i = 0; i < bin.length; i++) u8[i] = bin.charCodeAt(i) & 255;
+  const zip = await JSZip.loadAsync(u8);
+  let path = null;
+  const cont = zip.file("META-INF/container.xml");
+  if (cont) { const m = (await cont.async("string")).match(/full-path="([^"]+)"/); if (m) path = m[1]; }
+  if (!path) path = Object.keys(zip.files).find(f => /\.(xml|musicxml)$/i.test(f) && !/^META-INF/.test(f));
+  if (!path) throw new Error("nofile");
+  return zip.file(path).async("string");
 }
 const RANGES = { "4.3": [45, 96], "5": [36, 96], "4": [48, 96] };
 const natDown = m => isAcc(m) ? m - 1 : m, natUp = m => isAcc(m) ? m + 1 : m;
@@ -461,7 +527,7 @@ const S = {
   range: store.get("range", "auto"), size: store.get("size", "26"), sens: store.get("sens", 6),
   octFree: store.get("octFree", false), sound: store.get("sound", true), metro: store.get("metro", false),
   strict: store.get("strict", "normal"), lo: store.get("lo", 45), hi: store.get("hi", 96), autoRange: null,
-  label: store.get("label", "piece"), dimKey: store.get("dimKey", true), spell: {}, keyFifths: 0, keyAltered: new Set(),
+  nameMode: store.get("nameMode", "notated"), showNames: store.get("showNames", true), spell: {}, notated: {}, keyFifths: 0, keyAltered: new Set(), rawXml: null, rawName: "",
   vol: store.get("vol", 80), outDelay: store.get("outDelay", "auto"), sinkId: store.get("sinkId", ""),
   hits: 0, misses: 0, pieceId: null, source: null, midi: null, heard: [], micOn: false,
   evColor: new Map(), curEv: -1, run: null, result: null
@@ -536,10 +602,7 @@ function buildMarimba() {
     b.type = "button"; b.dataset.m = m;
     b.setAttribute("aria-label", noteName(m));
     b.innerHTML = '<span class="nm">' + pcName(m) + (m % 12 === 0 ? "<sub>" + (Math.floor(m / 12) - 1) + "</sub>" : "") + "</span>";
-    if (S.dimKey && !isAcc(m) && S.keyAltered.has(pc(m))) {
-      b.classList.add("keyalt");
-      b.title = NAMES[pc(m)] + ": durch die Vorzeichen meist " + (S.keyFifths > 0 ? pcName(m + 1) : pcName(m - 1));
-    }
+    if (S.nameMode === "notated" && S.notated[pc(m)]) b.title = "Echter Ton: " + (S.spell[pc(m)] || NAMES[pc(m)]);
     if (isAcc(m)) {
       const prevNat = natX[m - 1] ?? 0, w = Math.round(W * 0.82), h = AMAX - (AMAX - AMIN) * t;
       b.classList.add("bar", "acc");
@@ -601,6 +664,11 @@ let osmd = null;
 async function loadXML(data, name) {
   stopAll(); clearResults();
   if (!window.opensheetmusicdisplay) { setMsg("Die Notenansicht konnte nicht geladen werden. Prüfe die Internetverbindung.", "bad"); return false; }
+  if (typeof data === "string" && data.startsWith("PK")) {
+    try { data = await mxlToXml(data); } catch { setMsg("Die .mxl-Datei ließ sich nicht entpacken.", "bad"); return false; }
+  }
+  S.rawXml = data; S.rawName = name;
+  const shown = prepareXml(data);
   $("roll").hidden = true; $("osmd").hidden = false;
   $("osmd").innerHTML = "";
   osmd = new opensheetmusicdisplay.OpenSheetMusicDisplay($("osmd"), {
@@ -609,7 +677,7 @@ async function loadXML(data, name) {
   });
   const origRender = osmd.render.bind(osmd);
   osmd.render = () => { origRender(); setTimeout(repaintAll, 0); };
-  try { await osmd.load(data); osmd.render(); }
+  try { await osmd.load(shown); osmd.render(); }
   catch (e) { setMsg("Die Datei ließ sich nicht als MusicXML lesen.", "bad"); return false; }
   const sheet = osmd.Sheet;
   const m0 = sheet.SourceMeasures[0];
@@ -648,7 +716,6 @@ async function loadXML(data, name) {
   let sec = 0;
   evs.forEach((e, i) => { if (i) sec += (e.beat - evs[i - 1].beat) * 60 / evs[i - 1].bpm; e.sec = sec; });
   S.events = evs; S.bpm = base; S.source = "xml";
-  buildSpelling(fifths || 0, counts);
   $("pieceName").textContent = (sheet.TitleString || "").trim() || name || "Notenblatt";
   $("track").disabled = true; $("track").innerHTML = "<option>–</option>";
   osmd.cursor.show();
@@ -1238,9 +1305,17 @@ $("tempo").oninput = e => {
   $("lo").value = S.lo; $("hi").value = S.hi;
   $("customWrap").hidden = S.range !== "custom";
 })();
-$("labelPiece").checked = S.label === "piece"; $("dimKey").checked = S.dimKey;
-$("labelPiece").onchange = e => { S.label = e.target.checked ? "piece" : "std"; store.set("label", S.label); buildMarimba(); setCurrent(S.idx); keyHint(); };
-$("dimKey").onchange = e => { S.dimKey = e.target.checked; store.set("dimKey", S.dimKey); buildMarimba(); setCurrent(S.idx); keyHint(); };
+$("nameMode").value = S.nameMode; $("showNames").checked = S.showNames;
+async function namesChanged() {
+  if (S.source === "xml" && S.rawXml) {
+    const i = S.idx, from = $("fromM").value, to = $("toM").value;
+    await loadXML(S.rawXml, S.rawName);
+    $("fromM").value = from; $("toM").value = to; setCurrent(i);
+  } else { buildMarimba(); setCurrent(S.idx); }
+  keyHint();
+}
+$("nameMode").onchange = e => { S.nameMode = e.target.value; store.set("nameMode", S.nameMode); namesChanged(); };
+$("showNames").onchange = e => { S.showNames = e.target.checked; store.set("showNames", S.showNames); namesChanged(); };
 function keyHint() {
   const f = S.keyFifths || 0, n = Math.abs(f);
   const list = (f > 0 ? SHARP_ORDER : FLAT_ORDER).slice(0, n).map(p => f > 0 ? NAMES[p] + "is" : gerName(p, -1));
@@ -1248,7 +1323,7 @@ function keyHint() {
   $("keyHint").textContent = !S.events.length ? "" : n === 0
     ? "Dieses Stück hat keine Vorzeichen (C-Dur oder a-Moll)."
     : "Vorzeichen dieses Stücks: " + n + (f > 0 ? " ♯ (" : " ♭ (") + list.join(", ") + "), also " + key + " oder die parallele Moll-Tonart." +
-      (S.dimKey ? " Abgedunkelte Platten werden durch die Vorzeichen normalerweise nicht gespielt." : "");
+      (S.nameMode === "notated" ? " Auf der Marimba heißt " + (f > 0 ? SHARP_ORDER : FLAT_ORDER).slice(0, n).map(L => "die " + (S.spell[pc(L + (f > 0 ? 1 : -1))] || NAMES[pc(L + (f > 0 ? 1 : -1))]) + "-Platte „" + LETTERS[L] + "“").join(", ") + ". Die normalen Platten heißen dann " + (f > 0 ? SHARP_ORDER : FLAT_ORDER).slice(0, n).map(L => "„" + LETTERS[L] + "♮“").join(", ") + "." : "");
 }
 function rangeChanged() {
   $("customWrap").hidden = S.range !== "custom";
