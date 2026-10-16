@@ -5,6 +5,7 @@
 <meta name="viewport" content="width=device-width,initial-scale=1,viewport-fit=cover">
 <meta name="apple-mobile-web-app-capable" content="yes">
 <meta name="apple-mobile-web-app-title" content="Marimba">
+<meta http-equiv="Cache-Control" content="no-cache">
 <style>:root{padding-top:env(safe-area-inset-top,0px);padding-bottom:env(safe-area-inset-bottom,0px);box-sizing:border-box}*,*::before,*::after{box-sizing:border-box}body{margin:0;font-size:14px}[hidden]{display:none!important}</style>
 </head>
 <body>
@@ -140,6 +141,9 @@ button[disabled]{opacity:.45;cursor:default}
 .set-group .hint{margin:10px 0 0}
 .latflash{font-family:var(--f-display);font-weight:700;font-size:22px;color:var(--accent);min-width:1.2em;text-align:center;opacity:0;transition:opacity .05s}
 .latflash.on{opacity:1}
+.ver{display:flex;align-items:center;gap:10px;flex-wrap:wrap}
+.ver button{padding:5px 9px;font-size:13px}
+.update-bar{position:fixed;z-index:35;left:50%;transform:translateX(-50%);bottom:calc(env(safe-area-inset-bottom, 0px) + 14px);display:flex;align-items:center;gap:12px;background:var(--ink);color:var(--surface);padding:10px 12px 10px 16px;border-radius:12px;box-shadow:0 6px 24px rgba(0,0,0,.3);max-width:calc(100% - 32px);font-weight:600}
 /* Kopfleiste einklappen */
 .app.top-hidden .top{display:none}
 .show-top{position:fixed;z-index:25;top:calc(env(safe-area-inset-top, 0px) + 6px);right:max(10px, env(safe-area-inset-right, 0px));padding:6px 8px;border-radius:999px;box-shadow:0 2px 8px rgba(0,0,0,.18);opacity:.92}
@@ -311,8 +315,13 @@ select,input[type=number]{font:inherit;font-size:14px;padding:7px 8px;border-rad
           </div>
           <p class="hint" id="micHint">Üben: Die App wartet, bis du die leuchtende Platte triffst. Durchspielen: Nach dem Einzählen spielst du ohne Pause durch, danach siehst du deine Fehler. Ohne Mikrofon kannst du die Platten unten antippen.</p>
         </section>
+        <p class="hint ver">Version <span id="verNum"></span> · <button type="button" id="verCheck">Nach Update suchen</button></p>
       </div>
     </div>
+  </div>
+  <div class="update-bar" id="updBar" hidden>
+    <span>Neue Version verfügbar.</span>
+    <button type="button" class="primary" id="updNow">Jetzt aktualisieren</button>
   </div>
 
   <main class="sheet gut" id="sheetWrap">
@@ -380,6 +389,7 @@ select,input[type=number]{font:inherit;font-size:14px;padding:7px 8px;border-rad
 <script>
 (() => {
 "use strict";
+const APP_VERSION = "8";
 const $ = id => document.getElementById(id);
 const NAMES = ["C","Cis","D","Dis","E","F","Fis","G","Gis","A","B","H"];
 const isAcc = m => [1,3,6,8,10].includes(((m % 12) + 12) % 12);
@@ -1385,7 +1395,29 @@ $("lib").addEventListener("click", e => { if (e.target === $("lib")) closeLib();
 document.addEventListener("keydown", e => { if (e.key === "Escape" && !$("lib").hidden) closeLib(); });
 $("sampleBtn").onclick = () => { closeLib(); stopAll(); openSample(); };
 
+/* ---------- Updates erkennen ---------- */
+// Holt die Seite ohne Zwischenspeicher und vergleicht die Versionsnummer
+let updWanted = null;
+async function checkUpdate(manual) {
+  if (!/^https?:$/.test(location.protocol) || /claude\.(ai|site)|claudeusercontent/.test(location.hostname)) {
+    if (manual) setMsg("Diese Ansicht aktualisiert sich automatisch.");
+    return;
+  }
+  try {
+    const res = await fetch(location.pathname + "?nocache=" + Date.now(), { cache: "no-store" });
+    const html = await res.text();
+    const m = html.match(/APP_VERSION = "([^"]+)"/);
+    if (m && m[1] !== APP_VERSION) { updWanted = m[1]; $("updBar").hidden = false; }
+    else if (manual) setMsg("Du hast die neueste Version (" + APP_VERSION + ").", "ok");
+  } catch { if (manual) setMsg("Keine Verbindung, Update-Prüfung nicht möglich.", "bad"); }
+}
+$("verNum").textContent = APP_VERSION;
+$("verCheck").onclick = () => { closeSettings(); checkUpdate(true); };
+$("updNow").onclick = () => { location.replace(location.pathname + "?v=" + encodeURIComponent(updWanted || Date.now())); };
+document.addEventListener("visibilitychange", () => { if (document.visibilityState === "visible") checkUpdate(false); });
+
 async function startup() {
+  setTimeout(() => checkUpdate(false), 1500);
   const last = store.get("lastId", null);
   if (last) {
     try { const rec = await DB.get(last); if (rec && await openPiece(rec.kind, rec.data, rec.fileName, rec)) return; } catch {}
