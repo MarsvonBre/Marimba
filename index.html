@@ -237,7 +237,7 @@ select,input[type=number]{font:inherit;font-size:14px;padding:7px 8px;border-rad
           <div class="grid">
             <label>Tonnamen auf Platten und im Notenblatt
               <select id="nameMode">
-                <option value="notated">Wie notiert (Vorzeichen eingerechnet, z. B. H statt B)</option>
+                <option value="notated">Wie notiert mit Vorzeichen (z. B. Ces, Fis, ♮ für aufgelöste Töne)</option>
                 <option value="played">Gespielter Ton (z. B. B)</option>
               </select>
             </label>
@@ -405,14 +405,14 @@ select,input[type=number]{font:inherit;font-size:14px;padding:7px 8px;border-rad
 <script>
 (() => {
 "use strict";
-const APP_VERSION = "9.5";
+const APP_VERSION = "9.6";
 const $ = id => document.getElementById(id);
 const NAMES = ["C","Cis","D","Dis","E","F","Fis","G","Gis","A","B","H"];
 const isAcc = m => [1,3,6,8,10].includes(((m % 12) + 12) % 12);
 // Deutsche Notennamen. Im Modus „Wie im Stück“ heißen die Halbton-Platten so, wie das Stück sie schreibt (z. B. Es statt Dis).
 const pc = m => ((m % 12) + 12) % 12;
 // Variante „Wie notiert“: Platten, die durch die Vorzeichen am Anfang ersetzt werden, tragen den notierten Namen
-// (in F-Dur heißt die B-Platte „H“, die echte H-Platte „H♮“). Variante „Gespielter Ton“: echter Name (B, Es, Cis …).
+// mit Vorzeichen-Namen (mit 7 ♭ heißt die H-Platte „Ces“, die C-Platte „C♮“; in D-Dur heißt die Fis-Platte „Fis“, die F-Platte „F♮“). Variante „Gespielter Ton“: echter Name (B, Es, Cis …).
 const pcName = m => (S.nameMode === "notated" && S.notated[pc(m)]) || S.spell[pc(m)] || NAMES[pc(m)];
 const noteName = m => pcName(m) + (Math.floor(m / 12) - 1);
 const LETTERS = { 0: "C", 2: "D", 4: "E", 5: "F", 7: "G", 9: "A", 11: "H" };
@@ -441,7 +441,7 @@ function buildSpelling(fifths, counts) {
   S.keyAltered = new Set((fifths > 0 ? SHARP_ORDER : FLAT_ORDER).slice(0, n));
   const no = {};
   S.keyAltered.forEach(L => { no[L] = LETTERS[L] + "♮"; });
-  S.keyAltered.forEach(L => { no[pc(L + (fifths > 0 ? 1 : -1))] = LETTERS[L]; });
+  S.keyAltered.forEach(L => { no[pc(L + (fifths > 0 ? 1 : -1))] = gerName(L, fifths > 0 ? 1 : -1); });
   S.notated = no;
 }
 const STEP_PC = { C: 0, D: 2, E: 4, F: 5, G: 7, A: 9, B: 11 };
@@ -1323,7 +1323,7 @@ function keyHint() {
   $("keyHint").textContent = !S.events.length ? "" : n === 0
     ? "Dieses Stück hat keine Vorzeichen (C-Dur oder a-Moll)."
     : "Vorzeichen dieses Stücks: " + n + (f > 0 ? " ♯ (" : " ♭ (") + list.join(", ") + "), also " + key + " oder die parallele Moll-Tonart." +
-      (S.nameMode === "notated" ? " Auf der Marimba heißt " + (f > 0 ? SHARP_ORDER : FLAT_ORDER).slice(0, n).map(L => "die " + (S.spell[pc(L + (f > 0 ? 1 : -1))] || NAMES[pc(L + (f > 0 ? 1 : -1))]) + "-Platte „" + LETTERS[L] + "“").join(", ") + ". Die normalen Platten heißen dann " + (f > 0 ? SHARP_ORDER : FLAT_ORDER).slice(0, n).map(L => "„" + LETTERS[L] + "♮“").join(", ") + "." : "");
+      (S.nameMode === "notated" ? " Auf der Marimba heißt " + (f > 0 ? SHARP_ORDER : FLAT_ORDER).slice(0, n).map(L => "die " + (S.spell[pc(L + (f > 0 ? 1 : -1))] || NAMES[pc(L + (f > 0 ? 1 : -1))]) + "-Platte „" + gerName(L, f > 0 ? 1 : -1) + "“").join(", ") + ". Die normalen Platten heißen dann " + (f > 0 ? SHARP_ORDER : FLAT_ORDER).slice(0, n).map(L => "„" + LETTERS[L] + "♮“").join(", ") + "." : "");
 }
 function rangeChanged() {
   $("customWrap").hidden = S.range !== "custom";
