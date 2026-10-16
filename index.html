@@ -173,6 +173,8 @@ select,input[type=number]{font:inherit;font-size:14px;padding:7px 8px;border-rad
 .bar .nm{position:absolute;left:0;right:0;font-family:var(--f-ui);font-weight:700;font-size:11px;color:var(--label);text-align:center;pointer-events:none;line-height:1}
 .bar.nat .nm{bottom:6px} .bar.acc .nm{top:5px;font-size:10px}
 .bar .nm sub{font-size:8px;opacity:.8}
+.bar.keyalt{filter:brightness(.55) saturate(.6)}
+.bar.keyalt .nm{opacity:.7}
 .bar:active,.bar.hit{transform:translateY(2px)}
 .bar.target{box-shadow:0 0 0 3px var(--glow), 0 0 18px 4px color-mix(in srgb, var(--glow) 70%, transparent);filter:brightness(1.25)}
 .bar.ok{box-shadow:0 0 0 3px var(--ok), 0 0 18px 4px color-mix(in srgb, var(--ok) 70%, transparent);filter:brightness(1.2)}
@@ -256,6 +258,12 @@ select,input[type=number]{font:inherit;font-size:14px;padding:7px 8px;border-rad
             <label id="customWrap" hidden>Tiefste und höchste Platte
               <span class="pair"><select id="lo" aria-label="Tiefste Platte"></select> – <select id="hi" aria-label="Höchste Platte"></select></span>
             </label>
+            <label>Beschriftung der Platten
+              <select id="labelMode">
+                <option value="piece">Wie im Stück (Vorzeichen beachten)</option>
+                <option value="std">Standard (C, Cis, D, Dis …)</option>
+              </select>
+            </label>
             <label>Plattengröße auf dem Bildschirm
               <select id="size">
                 <option value="20">Klein</option>
@@ -264,6 +272,7 @@ select,input[type=number]{font:inherit;font-size:14px;padding:7px 8px;border-rad
               </select>
             </label>
           </div>
+          <p class="hint" id="keyHint"></p>
         </section>
         <section class="set-group">
           <h3>Ton</h3>
@@ -389,11 +398,39 @@ select,input[type=number]{font:inherit;font-size:14px;padding:7px 8px;border-rad
 <script>
 (() => {
 "use strict";
-const APP_VERSION = "9.1";
+const APP_VERSION = "9.2";
 const $ = id => document.getElementById(id);
 const NAMES = ["C","Cis","D","Dis","E","F","Fis","G","Gis","A","B","H"];
 const isAcc = m => [1,3,6,8,10].includes(((m % 12) + 12) % 12);
-const noteName = m => NAMES[m % 12] + (Math.floor(m / 12) - 1);
+// Deutsche Notennamen. Im Modus „Wie im Stück“ heißen die Halbton-Platten so, wie das Stück sie schreibt (z. B. Es statt Dis).
+const pc = m => ((m % 12) + 12) % 12;
+const pcName = m => (S.label === "piece" && S.spell[pc(m)]) || NAMES[pc(m)];
+const noteName = m => pcName(m) + (Math.floor(m / 12) - 1);
+const LETTERS = { 0: "C", 2: "D", 4: "E", 5: "F", 7: "G", 9: "A", 11: "H" };
+function gerName(fund, alt) {
+  const L = LETTERS[fund]; if (!L) return null;
+  if (alt === 0) return L;
+  if (alt === 1) return L + "is";
+  if (alt === 2) return L + "isis";
+  if (alt === -1) return L === "H" ? "B" : L === "E" ? "Es" : L === "A" ? "As" : L + "es";
+  if (alt === -2) return L === "H" ? "Heses" : L === "E" ? "Eses" : L === "A" ? "Ases" : L + "eses";
+  return null;
+}
+const SHARP_ORDER = [5, 0, 7, 2, 9, 4, 11], FLAT_ORDER = [11, 4, 9, 2, 7, 0, 5];
+const KEY_NAMES = ["Ces", "Ges", "Des", "As", "Es", "B", "F", "C", "G", "D", "A", "E", "H", "Fis", "Cis"];
+// Standard-Schreibweise der Halbtöne passend zur Tonart, danach überschreibt die Schreibweise aus dem Stück
+function buildSpelling(fifths, counts) {
+  const sp = fifths < 0 ? { 1: "Des", 3: "Es", 6: "Ges", 8: "As", 10: "B" } : { 1: "Cis", 3: "Dis", 6: "Fis", 8: "Gis", 10: "B" };
+  if (fifths > 4) sp[10] = "Ais";
+  Object.keys(counts).forEach(k => {
+    const best = Object.entries(counts[k]).sort((a, b) => b[1] - a[1])[0];
+    if (best && isAcc(+k)) sp[k] = best[0];
+  });
+  S.spell = sp;
+  S.keyFifths = fifths;
+  const n = Math.min(7, Math.abs(fifths));
+  S.keyAltered = new Set((fifths > 0 ? SHARP_ORDER : FLAT_ORDER).slice(0, n));
+}
 const RANGES = { "4.3": [45, 96], "5": [36, 96], "4": [48, 96] };
 const natDown = m => isAcc(m) ? m - 1 : m, natUp = m => isAcc(m) ? m + 1 : m;
 function dispRange() {
@@ -423,6 +460,7 @@ const S = {
   range: store.get("range", "auto"), size: store.get("size", "26"), sens: store.get("sens", 6),
   octFree: store.get("octFree", false), sound: store.get("sound", true), metro: store.get("metro", false),
   strict: store.get("strict", "normal"), lo: store.get("lo", 45), hi: store.get("hi", 96), autoRange: null,
+  label: store.get("label", "piece"), spell: {}, keyFifths: 0, keyAltered: new Set(),
   vol: store.get("vol", 80), outDelay: store.get("outDelay", "auto"), sinkId: store.get("sinkId", ""),
   hits: 0, misses: 0, pieceId: null, source: null, midi: null, heard: [], micOn: false,
   evColor: new Map(), curEv: -1, run: null, result: null
@@ -496,14 +534,18 @@ function buildMarimba() {
     const b = document.createElement("button");
     b.type = "button"; b.dataset.m = m;
     b.setAttribute("aria-label", noteName(m));
-    b.innerHTML = '<span class="nm">' + NAMES[m % 12] + (m % 12 === 0 ? "<sub>" + (Math.floor(m / 12) - 1) + "</sub>" : "") + "</span>";
+    b.innerHTML = '<span class="nm">' + pcName(m) + (m % 12 === 0 ? "<sub>" + (Math.floor(m / 12) - 1) + "</sub>" : "") + "</span>";
+    if (S.label === "piece" && !isAcc(m) && S.keyAltered.has(pc(m))) {
+      b.classList.add("keyalt");
+      b.title = NAMES[pc(m)] + ": durch die Vorzeichen meist " + (S.keyFifths > 0 ? pcName(m + 1) : pcName(m - 1));
+    }
     if (isAcc(m)) {
       const prevNat = natX[m - 1] ?? 0, w = Math.round(W * 0.82), h = AMAX - (AMAX - AMIN) * t;
-      b.className = "bar acc";
+      b.classList.add("bar", "acc");
       Object.assign(b.style, { left: (prevNat + W + gap / 2 - w / 2) + "px", top: (AMAX - h) + "px", width: w + "px", height: h + "px" });
     } else {
       const h = NMAX - (NMAX - NMIN) * t;
-      b.className = "bar nat";
+      b.classList.add("bar", "nat");
       Object.assign(b.style, { left: natX[m] + "px", top: (AMAX + RAIL) + "px", width: W + "px", height: h + "px" });
     }
     b.addEventListener("pointerdown", e => { e.preventDefault(); tap(m); });
@@ -572,7 +614,12 @@ async function loadXML(data, name) {
   const m0 = sheet.SourceMeasures[0];
   const base = (m0 && m0.TempoInBPM) || sheet.DefaultStartTempoInBpm || 80;
   try { const ts = m0.ActiveTimeSignature; S.beatsPerBar = Math.max(2, Math.round(ts.Numerator * 4 / ts.Denominator)); } catch { S.beatsPerBar = 4; }
-  const evs = [];
+  const evs = [], counts = {};
+  let fifths = null;
+  try {
+    for (const ins of (m0.FirstInstructionsStaffEntries[0] || { Instructions: [] }).Instructions)
+      if (typeof ins.Key === "number" && "keyTypeOriginal" in ins) { fifths = ins.Key; break; }
+  } catch {}
   sheet.SourceMeasures.forEach((m, mi) => {
     const bpm = m.TempoInBPM || base, mStart = m.AbsoluteTimestamp.RealValue * 4;
     m.VerticalSourceStaffEntryContainers.forEach(c => {
@@ -584,7 +631,12 @@ async function loadXML(data, name) {
           ve.Notes.forEach(n => {
             if (!n.Pitch || (n.isRest && n.isRest())) return;
             if (n.NoteTie && n.NoteTie.StartNote !== n) return;
-            notes.add(n.halfTone + 12); src.push(n);
+            const mid = n.halfTone + 12;
+            notes.add(mid); src.push(n);
+            try {
+              const nm = gerName(n.Pitch.FundamentalNote, n.Pitch.AccidentalHalfTones);
+              if (nm) { const c2 = counts[pc(mid)] = counts[pc(mid)] || {}; c2[nm] = (c2[nm] || 0) + 1; }
+            } catch {}
           });
         });
       });
@@ -595,6 +647,7 @@ async function loadXML(data, name) {
   let sec = 0;
   evs.forEach((e, i) => { if (i) sec += (e.beat - evs[i - 1].beat) * 60 / evs[i - 1].bpm; e.sec = sec; });
   S.events = evs; S.bpm = base; S.source = "xml";
+  buildSpelling(fifths || 0, counts);
   $("pieceName").textContent = (sheet.TitleString || "").trim() || name || "Notenblatt";
   $("track").disabled = true; $("track").innerHTML = "<option>–</option>";
   osmd.cursor.show();
@@ -635,6 +688,17 @@ function buildMidiEvents() {
   S.bpm = Math.round(midi.header.tempos[0] ? midi.header.tempos[0].bpm : 120);
   evs.forEach(e => { e.notes.sort((a, b) => a - b); e.measure = Math.floor(e.beat / perBar + 1e-6) + 1; e.inBar = e.beat - (e.measure - 1) * perBar; e.bpm = S.bpm; });
   S.events = evs; S.source = "midi";
+  let mf = 0;
+  try {
+    const ks = midi.header.keySignatures[0];
+    if (ks) { const i = KEY_NAMES.findIndex(k => k.toLowerCase() === String(ks.key).toLowerCase().replace("b", "es").replace("#", "is"));
+      const map = { C: 0, G: 1, D: 2, A: 3, E: 4, B: 5, "F#": 6, "C#": 7, F: -1, Bb: -2, Eb: -3, Ab: -4, Db: -5, Gb: -6, Cb: -7 };
+      mf = map[ks.key] ?? (i >= 0 ? i - 7 : 0);
+      if (ks.scale === "minor") mf -= 3;
+      if (mf > 7) mf -= 12; if (mf < -7) mf += 12;
+    }
+  } catch {}
+  buildSpelling(mf, {});
   $("osmd").hidden = true; $("roll").hidden = false;
   const roll = $("roll"); roll.innerHTML = "";
   let lastM = 0;
@@ -656,6 +720,7 @@ function afterLoad() {
   if (!S.events.length) { setMsg("Keine spielbaren Noten gefunden.", "bad"); return; }
   computeAuto();
   buildMarimba();
+  keyHint();
   updTempo();
   setCurrent(loopStart());
   rangeMsg();
@@ -1172,6 +1237,17 @@ $("tempo").oninput = e => {
   $("lo").value = S.lo; $("hi").value = S.hi;
   $("customWrap").hidden = S.range !== "custom";
 })();
+$("labelMode").value = S.label;
+$("labelMode").onchange = e => { S.label = e.target.value; store.set("label", S.label); buildMarimba(); setCurrent(S.idx); keyHint(); };
+function keyHint() {
+  const f = S.keyFifths || 0, n = Math.abs(f);
+  const list = (f > 0 ? SHARP_ORDER : FLAT_ORDER).slice(0, n).map(p => f > 0 ? NAMES[p] + "is" : gerName(p, -1));
+  const key = KEY_NAMES[f + 7] ? KEY_NAMES[f + 7] + "-Dur" : "";
+  $("keyHint").textContent = !S.events.length ? "" : n === 0
+    ? "Dieses Stück hat keine Vorzeichen (C-Dur oder a-Moll)."
+    : "Vorzeichen dieses Stücks: " + n + (f > 0 ? " ♯ (" : " ♭ (") + list.join(", ") + "), also " + key + " oder die parallele Moll-Tonart." +
+      (S.label === "piece" ? " Abgedunkelte Platten werden durch die Vorzeichen normalerweise nicht gespielt." : "");
+}
 function rangeChanged() {
   $("customWrap").hidden = S.range !== "custom";
   buildMarimba(); setCurrent(S.idx); rangeMsg();
