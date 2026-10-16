@@ -196,11 +196,6 @@ select,input[type=number]{font:inherit;font-size:14px;padding:7px 8px;border-rad
     </div>
     <div class="piece" id="pieceName">Lädt …</div>
     <div class="acts">
-      <label class="btn" title="MusicXML (.xml, .musicxml, .mxl) oder MIDI (.mid)">
-        <svg class="icon" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" aria-hidden="true"><path d="M12 15V3m0 0L7 8m5-5 5 5M4 15v4a2 2 0 0 0 2 2h12a2 2 0 0 0 2-2v-4"/></svg>
-        <span class="lbl-t">Noten laden</span>
-        <input type="file" id="fileIn" aria-label="Noten laden">
-      </label>
       <button id="libBtn" type="button" aria-label="Meine Stücke" title="Meine Stücke"><svg class="icon" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" aria-hidden="true"><path d="M9 18V5l11-2v13"/><circle cx="6" cy="18" r="3"/><circle cx="17" cy="16" r="3"/></svg><span class="lbl-t">Meine Stücke</span></button>
       <button id="setBtn" type="button" aria-label="Einstellungen" title="Einstellungen"><svg class="icon" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" aria-hidden="true"><circle cx="12" cy="12" r="3"/><path d="M19.4 15a1.7 1.7 0 0 0 .3 1.8l.1.1a2 2 0 1 1-2.8 2.8l-.1-.1a1.7 1.7 0 0 0-1.8-.3 1.7 1.7 0 0 0-1 1.5V21a2 2 0 1 1-4 0v-.1a1.7 1.7 0 0 0-1.1-1.5 1.7 1.7 0 0 0-1.8.3l-.1.1a2 2 0 1 1-2.8-2.8l.1-.1a1.7 1.7 0 0 0 .3-1.8 1.7 1.7 0 0 0-1.5-1H3a2 2 0 1 1 0-4h.1a1.7 1.7 0 0 0 1.5-1.1 1.7 1.7 0 0 0-.3-1.8l-.1-.1a2 2 0 1 1 2.8-2.8l.1.1a1.7 1.7 0 0 0 1.8.3H9a1.7 1.7 0 0 0 1-1.5V3a2 2 0 1 1 4 0v.1a1.7 1.7 0 0 0 1 1.5 1.7 1.7 0 0 0 1.8-.3l.1-.1a2 2 0 1 1 2.8 2.8l-.1.1a1.7 1.7 0 0 0-.3 1.8V9a1.7 1.7 0 0 0 1.5 1H21a2 2 0 1 1 0 4h-.1a1.7 1.7 0 0 0-1.5 1z"/></svg></button>
       <button id="hideTop" type="button" aria-label="Leiste ausblenden" title="Leiste ausblenden"><svg class="icon" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.4"><path d="m6 15 6-6 6 6"/></svg></button>
@@ -389,7 +384,7 @@ select,input[type=number]{font:inherit;font-size:14px;padding:7px 8px;border-rad
 <script>
 (() => {
 "use strict";
-const APP_VERSION = "8";
+const APP_VERSION = "9";
 const $ = id => document.getElementById(id);
 const NAMES = ["C","Cis","D","Dis","E","F","Fis","G","Gis","A","B","H"];
 const isAcc = m => [1,3,6,8,10].includes(((m % 12) + 12) % 12);
@@ -1325,7 +1320,7 @@ function handleFile(f) {
   };
   r.readAsArrayBuffer(f);
 }
-["fileIn", "fileIn2"].forEach(id => $(id).onchange = e => { const f = e.target.files[0]; e.target.value = ""; handleFile(f); });
+["fileIn2"].forEach(id => $(id).onchange = e => { const f = e.target.files[0]; e.target.value = ""; handleFile(f); });
 
 function fmtDate(ts) {
   if (!ts) return "";
