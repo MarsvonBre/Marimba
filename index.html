@@ -258,12 +258,8 @@ select,input[type=number]{font:inherit;font-size:14px;padding:7px 8px;border-rad
             <label id="customWrap" hidden>Tiefste und höchste Platte
               <span class="pair"><select id="lo" aria-label="Tiefste Platte"></select> – <select id="hi" aria-label="Höchste Platte"></select></span>
             </label>
-            <label>Beschriftung der Platten
-              <select id="labelMode">
-                <option value="piece">Wie im Stück (Vorzeichen beachten)</option>
-                <option value="std">Standard (C, Cis, D, Dis …)</option>
-              </select>
-            </label>
+            <label class="inline"><input type="checkbox" id="labelPiece"> Namen wie im Stück (z. B. Es statt Dis)</label>
+            <label class="inline"><input type="checkbox" id="dimKey"> Vorzeichen anzeigen (nicht gespielte Platten abdunkeln)</label>
             <label>Plattengröße auf dem Bildschirm
               <select id="size">
                 <option value="20">Klein</option>
@@ -398,7 +394,7 @@ select,input[type=number]{font:inherit;font-size:14px;padding:7px 8px;border-rad
 <script>
 (() => {
 "use strict";
-const APP_VERSION = "9.2";
+const APP_VERSION = "9.3";
 const $ = id => document.getElementById(id);
 const NAMES = ["C","Cis","D","Dis","E","F","Fis","G","Gis","A","B","H"];
 const isAcc = m => [1,3,6,8,10].includes(((m % 12) + 12) % 12);
@@ -460,7 +456,7 @@ const S = {
   range: store.get("range", "auto"), size: store.get("size", "26"), sens: store.get("sens", 6),
   octFree: store.get("octFree", false), sound: store.get("sound", true), metro: store.get("metro", false),
   strict: store.get("strict", "normal"), lo: store.get("lo", 45), hi: store.get("hi", 96), autoRange: null,
-  label: store.get("label", "piece"), spell: {}, keyFifths: 0, keyAltered: new Set(),
+  label: store.get("label", "piece"), dimKey: store.get("dimKey", true), spell: {}, keyFifths: 0, keyAltered: new Set(),
   vol: store.get("vol", 80), outDelay: store.get("outDelay", "auto"), sinkId: store.get("sinkId", ""),
   hits: 0, misses: 0, pieceId: null, source: null, midi: null, heard: [], micOn: false,
   evColor: new Map(), curEv: -1, run: null, result: null
@@ -535,7 +531,7 @@ function buildMarimba() {
     b.type = "button"; b.dataset.m = m;
     b.setAttribute("aria-label", noteName(m));
     b.innerHTML = '<span class="nm">' + pcName(m) + (m % 12 === 0 ? "<sub>" + (Math.floor(m / 12) - 1) + "</sub>" : "") + "</span>";
-    if (S.label === "piece" && !isAcc(m) && S.keyAltered.has(pc(m))) {
+    if (S.dimKey && !isAcc(m) && S.keyAltered.has(pc(m))) {
       b.classList.add("keyalt");
       b.title = NAMES[pc(m)] + ": durch die Vorzeichen meist " + (S.keyFifths > 0 ? pcName(m + 1) : pcName(m - 1));
     }
@@ -1237,8 +1233,9 @@ $("tempo").oninput = e => {
   $("lo").value = S.lo; $("hi").value = S.hi;
   $("customWrap").hidden = S.range !== "custom";
 })();
-$("labelMode").value = S.label;
-$("labelMode").onchange = e => { S.label = e.target.value; store.set("label", S.label); buildMarimba(); setCurrent(S.idx); keyHint(); };
+$("labelPiece").checked = S.label === "piece"; $("dimKey").checked = S.dimKey;
+$("labelPiece").onchange = e => { S.label = e.target.checked ? "piece" : "std"; store.set("label", S.label); buildMarimba(); setCurrent(S.idx); keyHint(); };
+$("dimKey").onchange = e => { S.dimKey = e.target.checked; store.set("dimKey", S.dimKey); buildMarimba(); setCurrent(S.idx); keyHint(); };
 function keyHint() {
   const f = S.keyFifths || 0, n = Math.abs(f);
   const list = (f > 0 ? SHARP_ORDER : FLAT_ORDER).slice(0, n).map(p => f > 0 ? NAMES[p] + "is" : gerName(p, -1));
@@ -1246,7 +1243,7 @@ function keyHint() {
   $("keyHint").textContent = !S.events.length ? "" : n === 0
     ? "Dieses Stück hat keine Vorzeichen (C-Dur oder a-Moll)."
     : "Vorzeichen dieses Stücks: " + n + (f > 0 ? " ♯ (" : " ♭ (") + list.join(", ") + "), also " + key + " oder die parallele Moll-Tonart." +
-      (S.label === "piece" ? " Abgedunkelte Platten werden durch die Vorzeichen normalerweise nicht gespielt." : "");
+      (S.dimKey ? " Abgedunkelte Platten werden durch die Vorzeichen normalerweise nicht gespielt." : "");
 }
 function rangeChanged() {
   $("customWrap").hidden = S.range !== "custom";
