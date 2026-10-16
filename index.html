@@ -259,10 +259,32 @@ select,input[type=number]{font:inherit;font-size:14px;padding:7px 8px;border-rad
         <label class="inline"><input type="checkbox" id="octFree"> Oktave beim Erkennen egal</label>
         <label class="inline"><input type="checkbox" id="sound" checked> Ton beim Vorspielen und Antippen</label>
         <label class="inline"><input type="checkbox" id="metro"> Metronom beim Durchspielen hörbar</label>
+        <label>Lautstärke
+          <input type="range" id="vol" min="0" max="100" step="5">
+        </label>
+        <label id="sinkWrap" hidden>Lautsprecher
+          <select id="sink"><option value="">Standard</option></select>
+        </label>
+        <label>Verzögerung der Tonausgabe
+          <span class="pair"><select id="outDelay">
+            <option value="auto">Automatisch</option>
+            <option value="0">Keine</option>
+            <option value="100">0,1 s</option>
+            <option value="200">0,2 s</option>
+            <option value="300">0,3 s</option>
+            <option value="500">0,5 s</option>
+            <option value="800">0,8 s</option>
+            <option value="1000">1,0 s</option>
+            <option value="1500">1,5 s</option>
+            <option value="2000">2,0 s</option>
+            <option value="2500">2,5 s</option>
+          </select><button type="button" id="latTest">Testen</button></span>
+        </label>
         <label>MIDI-Spur
           <select id="track" disabled><option>–</option></select>
         </label>
       </div>
+      <p class="hint" id="outHint"></p>
       <p class="hint" id="micHint">Üben: Die App wartet, bis du die leuchtende Platte triffst. Durchspielen: Nach dem Einzählen spielst du ohne Pause durch, danach siehst du deine Fehler. Ohne Mikrofon kannst du die Platten unten antippen.</p>
     </details>
   </section>
@@ -310,6 +332,7 @@ const S = {
   range: store.get("range", "auto"), size: store.get("size", "26"), sens: store.get("sens", 6),
   octFree: store.get("octFree", false), sound: store.get("sound", true), metro: store.get("metro", false),
   strict: store.get("strict", "normal"), lo: store.get("lo", 45), hi: store.get("hi", 96), autoRange: null,
+  vol: store.get("vol", 80), outDelay: store.get("outDelay", "auto"), sinkId: store.get("sinkId", ""),
   hits: 0, misses: 0, source: null, midi: null, heard: [], micOn: false,
   evColor: new Map(), curEv: -1, run: null, result: null
 };
@@ -318,13 +341,25 @@ $("octFree").checked = S.octFree; $("sound").checked = S.sound; $("metro").check
 
 /* ---------- Ton (einfacher Marimba-Klang) ---------- */
 let ctx = null, master = null;
+const IS_IOS = /iP(hone|ad|od)/.test(navigator.userAgent) || (navigator.platform === "MacIntel" && navigator.maxTouchPoints > 1);
+// iOS: "playback" spielt auch bei Stummschalter und erlaubt AirPlay
+function setSession(type) { try { if (navigator.audioSession) navigator.audioSession.type = type; } catch {} }
+// Verzögerung zwischen Abspielen und Hören (AirPlay, Bluetooth) in Sekunden
+function outLat() {
+  if (S.outDelay !== "auto") return (+S.outDelay) / 1000;
+  if (!ctx) return 0;
+  const l = (ctx.outputLatency || 0) + (ctx.baseLatency || 0);
+  return Math.max(0, Math.min(3, l));
+}
 function audio() {
   if (!ctx) {
     const AC = window.AudioContext || window.webkitAudioContext;
     ctx = new AC();
-    master = ctx.createGain(); master.gain.value = 0.5;
+    master = ctx.createGain(); master.gain.value = S.vol / 100 * 0.7;
     const comp = ctx.createDynamicsCompressor();
     master.connect(comp); comp.connect(ctx.destination);
+    if (!S.micOn) setSession("playback");
+    if (S.sinkId && ctx.setSinkId) ctx.setSinkId(S.sinkId).catch(() => {});
   }
   if (ctx.state === "suspended") ctx.resume();
   return ctx;
@@ -629,23 +664,28 @@ function play() {
   audio(); S.playing = true; updPlayBtn();
   const [a, b] = loopBounds();
   if (S.idx < a || S.idx > b) setCurrent(a);
+  let aIdx = S.idx;
   t0 = performance.now() - (S.events[S.idx].sec / factor()) * 1000;
-  hit(S.events[S.idx]);
+  sound(S.events[aIdx]); lateFlash(S.events[aIdx]);
   keepAwake();
+  // Der Ton wird um die Ausgabe-Verzögerung früher gespielt, das Leuchten folgt, wenn er zu hören ist
   const tick = now => {
     if (!S.playing) return;
     const [a2, b2, looped] = loopBounds();
-    const t = songTime(now), nx = S.idx + 1, endT = S.events[b2].sec + 60 / S.bpm;
-    if (nx <= b2 && t >= S.events[nx].sec) { setCurrent(nx); hit(S.events[nx]); }
-    else if (nx > b2 && t >= endT) {
-      if (looped) { setCurrent(a2); t0 = performance.now() - (S.events[a2].sec / factor()) * 1000; hit(S.events[a2]); }
+    const t = songTime(now), tv = t - outLat() * factor();
+    while (aIdx + 1 <= b2 && t >= S.events[aIdx + 1].sec) { aIdx++; sound(S.events[aIdx]); }
+    const nx = S.idx + 1, endT = S.events[b2].sec + 60 / S.bpm;
+    if (nx <= b2 && tv >= S.events[nx].sec) { setCurrent(nx); flash(S.events[nx].notes, "hit", 120); }
+    else if (nx > b2 && tv >= endT) {
+      if (looped) { setCurrent(a2); aIdx = a2; t0 = performance.now() - (S.events[a2].sec / factor()) * 1000; sound(S.events[a2]); lateFlash(S.events[a2]); }
       else { stopPlay(); setMsg("Ende erreicht."); setCurrent(a2); return; }
     }
     raf = requestAnimationFrame(tick);
   };
   raf = requestAnimationFrame(tick);
 }
-function hit(e) { e.notes.forEach(m => strike(m, e.notes.length > 1 ? 0.6 : 0.8)); flash(e.notes, "hit", 120); }
+function sound(e) { e.notes.forEach(m => strike(m, e.notes.length > 1 ? 0.6 : 0.8)); }
+function lateFlash(e) { setTimeout(() => flash(e.notes, "hit", 120), outLat() * 1000); }
 function stopPlay() {
   S.playing = false; cancelAnimationFrame(raf); updPlayBtn();
   try { wake && wake.release(); } catch {} wake = null;
@@ -687,9 +727,10 @@ async function startRun() {
   const clickStart = ctx.currentTime + 0.15;
   const nClicks = countBeats + Math.floor(lead + 1e-6);
   for (let k = 0; k < nClicks; k++) click(k % countBeats === 0, clickStart + k * beatReal);
-  const startPerf = performance.now() + 150 + (countBeats + lead) * beatReal * 1000;
+  const L = outLat() * 1000;   // Klicks sind erst nach dieser Zeit zu hören
+  const startPerf = performance.now() + 150 + L + (countBeats + lead) * beatReal * 1000;
   t0 = startPerf - (e0.sec / factor()) * 1000;
-  S.run = { a, b, onsets: [], startPerf, beatReal, lastClickBeat: -1, firstClickPerf: performance.now() + 150 };
+  S.run = { a, b, onsets: [], startPerf, beatReal, lastClickBeat: -1, firstClickPerf: performance.now() + 150 + L, L };
   S.playing = true; updPlayBtn(); keepAwake();
   $("nextLbl").textContent = "Einsatz";
   setMsg("Einzählen … dann spiel ohne Pause durch.");
@@ -706,8 +747,8 @@ async function startRun() {
     }
     const t = songTime(now), nx = S.idx + 1;
     if (nx <= run.b && t >= S.events[nx].sec) setCurrent(nx);
-    if (S.metro && now >= run.startPerf - 30) {
-      const bi = Math.floor((now - run.startPerf + 30) / (run.beatReal * 1000));
+    if (S.metro && now >= run.startPerf - 30 - run.L) {
+      const bi = Math.floor((now - run.startPerf + 30 + run.L) / (run.beatReal * 1000));
       if (bi > run.lastClickBeat) { run.lastClickBeat = bi; click(((bi + Math.round(lead)) % S.beatsPerBar) === 0); }
     }
     const endT = S.events[run.b].sec + Math.max(60 / S.bpm, 0.8 * factor());
@@ -890,6 +931,7 @@ let stream = null, anBig = null, anSmall = null, spec = null, td = null, micRaf 
 let floorRms = 0.002, prevRms = 0, lastOnset = 0;
 async function micStart() {
   if (!navigator.mediaDevices || !navigator.mediaDevices.getUserMedia) throw new Error("nomic");
+  setSession("play-and-record");
   stream = await navigator.mediaDevices.getUserMedia({ audio: { echoCancellation: false, noiseSuppression: false, autoGainControl: false } });
   const c = audio();
   const src = c.createMediaStreamSource(stream);
@@ -898,6 +940,7 @@ async function micStart() {
   src.connect(anBig); src.connect(anSmall);
   spec = new Float32Array(anBig.frequencyBinCount); td = new Float32Array(1024);
   S.micOn = true; $("meter").hidden = false;
+  fillSinks();
   $("micBtn").setAttribute("aria-pressed", "true"); $("micTxt").textContent = "Hört zu";
   const loop = () => {
     if (!S.micOn) return;
@@ -921,6 +964,7 @@ async function micStart() {
   micRaf = requestAnimationFrame(loop);
 }
 function micStop() {
+  setSession("playback");
   S.micOn = false; cancelAnimationFrame(micRaf); $("meter").hidden = true;
   if (stream) stream.getTracks().forEach(t => t.stop()); stream = null;
   $("micBtn").setAttribute("aria-pressed", "false"); $("micTxt").textContent = "Zuhören";
@@ -1053,6 +1097,43 @@ $("size").onchange = e => { S.size = e.target.value; store.set("size", S.size); 
 $("sens").oninput = e => { S.sens = +e.target.value; store.set("sens", S.sens); };
 $("octFree").onchange = e => { S.octFree = e.target.checked; store.set("octFree", S.octFree); };
 $("sound").onchange = e => { S.sound = e.target.checked; store.set("sound", S.sound); };
+$("vol").value = S.vol; $("outDelay").value = S.outDelay;
+$("vol").oninput = e => { S.vol = +e.target.value; store.set("vol", S.vol); if (master) master.gain.value = S.vol / 100 * 0.7; };
+$("outDelay").onchange = e => { S.outDelay = e.target.value; store.set("outDelay", S.outDelay); };
+$("latTest").onclick = () => {
+  const c = audio(), L = outLat(), beat = 0.6, t = c.currentTime + 0.1;
+  for (let k = 0; k < 4; k++) {
+    click(k === 0, t + k * beat);
+    setTimeout(() => {
+      $("countNum").textContent = k + 1; $("countin").hidden = false;
+      setTimeout(() => { $("countin").hidden = true; }, 220);
+    }, (0.1 + k * beat + L) * 1000);
+  }
+  setMsg("Passen Klick und Zahl zusammen? Kommt der Klick später, Verzögerung erhöhen. Kommt er früher, verringern." + (S.outDelay === "auto" ? " (Automatisch erkannt: " + Math.round(L * 1000) + " ms)" : ""));
+};
+async function fillSinks() {
+  const sel = $("sink");
+  if (!window.AudioContext || !AudioContext.prototype.setSinkId || !navigator.mediaDevices || !navigator.mediaDevices.enumerateDevices) { $("sinkWrap").hidden = true; return false; }
+  try {
+    const outs = (await navigator.mediaDevices.enumerateDevices()).filter(d => d.kind === "audiooutput" && d.deviceId !== "default" && d.deviceId !== "communications");
+    sel.innerHTML = '<option value="">Standard</option>' + outs.map((d, i) => '<option value="' + d.deviceId.replace(/"/g, "") + '"></option>').join("");
+    [...sel.options].slice(1).forEach((o, i) => o.textContent = outs[i].label || "Ausgang " + (i + 1));
+    sel.value = outs.some(d => d.deviceId === S.sinkId) ? S.sinkId : "";
+    $("sinkWrap").hidden = false;
+    return true;
+  } catch { $("sinkWrap").hidden = true; return false; }
+}
+$("sink").onchange = e => {
+  S.sinkId = e.target.value; store.set("sinkId", S.sinkId);
+  if (ctx && ctx.setSinkId) ctx.setSinkId(S.sinkId).catch(() => setMsg("Dieser Lautsprecher lässt sich nicht auswählen.", "bad"));
+};
+try { navigator.mediaDevices && navigator.mediaDevices.addEventListener && navigator.mediaDevices.addEventListener("devicechange", fillSinks); } catch {}
+fillSinks().then(ok => {
+  $("outHint").textContent = IS_IOS
+    ? "Ton auf den HomePod oder andere AirPlay-Lautsprecher: Kontrollzentrum öffnen, in der Musik-Kachel auf das AirPlay-Symbol tippen und den HomePod wählen. AirPlay verzögert den Ton um etwa 1 bis 2 Sekunden. Stell die Verzögerung so ein, dass beim Testen Klick und Zahl zusammenpassen. Während das Mikrofon an ist, kann iOS den Ton wieder auf das iPhone selbst legen."
+    : ok ? "Wähle oben den Lautsprecher. Stehen dort keine Namen, erscheinen sie, sobald du das Mikrofon einmal erlaubt hast. Bei Bluetooth-Lautsprechern die Verzögerung mit „Testen“ abgleichen."
+         : "Den Lautsprecher wählst du in den Ton-Einstellungen deines Geräts. Bei Bluetooth- oder AirPlay-Lautsprechern die Verzögerung mit „Testen“ abgleichen.";
+});
 $("metro").onchange = e => { S.metro = e.target.checked; store.set("metro", S.metro); };
 $("strict").onchange = e => { S.strict = e.target.value; store.set("strict", S.strict); };
 $("track").onchange = () => { stopAll(); buildMidiEvents(); };
