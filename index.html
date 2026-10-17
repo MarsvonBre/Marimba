@@ -173,7 +173,11 @@ select,input[type=number]{font:inherit;font-size:14px;padding:7px 8px;border-rad
 .hint{font-size:13px;color:var(--muted);line-height:1.45;max-width:65ch}
 
 /* Marimba */
-.marimba-wrap{background:var(--rail);overflow-x:auto;overflow-y:hidden;padding-block:10px;-webkit-overflow-scrolling:touch;flex:none}
+.marimba-wrap{background:var(--rail);overflow-x:auto;overflow-y:hidden;padding-block:4px 10px;-webkit-overflow-scrolling:touch;flex:none}
+.mar-grip{flex:none;background:var(--rail);height:22px;display:flex;align-items:center;justify-content:center;cursor:ns-resize;touch-action:none;user-select:none;-webkit-user-select:none}
+.mar-grip span{width:44px;height:5px;border-radius:3px;background:rgba(255,255,255,.35);transition:background .1s,width .1s}
+.mar-grip:hover span,.mar-grip.drag span{background:rgba(255,255,255,.75);width:64px}
+.mar-grip:focus-visible{outline:2px solid var(--glow);outline-offset:-2px}
 #marimba{position:relative;margin:0 auto}
 .bar{position:absolute;border:0;padding:0;border-radius:4px;cursor:pointer;touch-action:manipulation;
   background:linear-gradient(90deg,var(--wood-dark),var(--wood) 18%,var(--wood-hi) 50%,var(--wood) 82%,var(--wood-dark));
@@ -284,11 +288,7 @@ select,input[type=number]{font:inherit;font-size:14px;padding:7px 8px;border-rad
               <span class="pair"><select id="lo" aria-label="Tiefste Platte"></select> – <select id="hi" aria-label="Höchste Platte"></select></span>
             </label>
             <label>Plattengröße auf dem Bildschirm
-              <select id="size">
-                <option value="20">Klein</option>
-                <option value="26">Mittel</option>
-                <option value="34">Groß</option>
-              </select>
+              <input type="range" id="size" min="14" max="56" step="1">
             </label>
           </div>
         </section>
@@ -407,6 +407,7 @@ select,input[type=number]{font:inherit;font-size:14px;padding:7px 8px;border-rad
 
   </section>
 
+  <div class="mar-grip" id="marGrip" role="slider" tabindex="0" aria-label="Marimba größer oder kleiner ziehen" title="Ziehen: Marimba größer oder kleiner" aria-valuemin="14" aria-valuemax="56"><span></span></div>
   <section class="marimba-wrap gut" id="marWrap" aria-label="Marimba">
     <div id="marimba"></div>
   </section>
@@ -418,7 +419,7 @@ select,input[type=number]{font:inherit;font-size:14px;padding:7px 8px;border-rad
 <script>
 (() => {
 "use strict";
-const APP_VERSION = "9.10";
+const APP_VERSION = "9.11";
 const $ = id => document.getElementById(id);
 const NAMES = ["C","Cis","D","Dis","E","F","Fis","G","Gis","A","B","H"];
 const isAcc = m => [1,3,6,8,10].includes(((m % 12) + 12) % 12);
@@ -533,7 +534,7 @@ const store = {
 
 const S = {
   events: [], idx: 0, mode: "play", playing: false, tempo: 100, bpm: 80, beatsPerBar: 4,
-  range: store.get("range", "auto"), size: store.get("size", "26"), sens: store.get("sens", 6),
+  range: store.get("range", "auto"), size: +store.get("size", 26) || 26, sens: store.get("sens", 6),
   octFree: store.get("octFree", false), sound: store.get("sound", true), metro: store.get("metro", false), rollLong: store.get("rollLong", false),
   strict: store.get("strict", "normal"), lo: store.get("lo", 45), hi: store.get("hi", 96), autoRange: null,
   nameMode: store.get("nameMode", "played") === "line" ? "line" : "played", showNames: store.get("showNames", true), spell: {}, keyFifths: 0, keyAltered: new Set(), rawXml: null, rawName: "",
@@ -1392,7 +1393,34 @@ function rangeMsg() {
 $("range").onchange = e => { S.range = e.target.value; store.set("range", S.range); rangeChanged(); };
 $("lo").onchange = e => { S.lo = +e.target.value; if (S.lo >= S.hi) { S.hi = natUp(S.lo + 12); $("hi").value = S.hi; store.set("hi", S.hi); } store.set("lo", S.lo); rangeChanged(); };
 $("hi").onchange = e => { S.hi = +e.target.value; if (S.hi <= S.lo) { S.lo = natDown(S.hi - 12); $("lo").value = S.lo; store.set("lo", S.lo); } store.set("hi", S.hi); rangeChanged(); };
-$("size").onchange = e => { S.size = e.target.value; store.set("size", S.size); buildMarimba(); setCurrent(S.idx); };
+/* Marimba-Größe: am Griff ziehen (nach oben größer, nach unten kleiner) oder Regler in den Einstellungen */
+const SIZE_MIN = 14, SIZE_MAX = 56, HEIGHT_PER_W = 5.25;   // Marimba-Höhe ≈ 5,25 × Plattenbreite
+function sizeMax() { return Math.max(SIZE_MIN, Math.min(SIZE_MAX, Math.floor(window.innerHeight * 0.55 / HEIGHT_PER_W))); }
+let sizeRaf = 0;
+function setSize(v, save) {
+  v = Math.round(Math.max(SIZE_MIN, Math.min(sizeMax(), v)));
+  $("marGrip").setAttribute("aria-valuenow", v);
+  if (v === S.size && !save) return;
+  S.size = v; $("size").value = v;
+  cancelAnimationFrame(sizeRaf);
+  sizeRaf = requestAnimationFrame(() => { buildMarimba(); const e = S.events[S.idx]; if (e) revealBars(e.notes); });
+  if (save) store.set("size", v);
+}
+$("size").value = S.size; $("marGrip").setAttribute("aria-valuenow", S.size);
+$("size").oninput = e => setSize(+e.target.value, true);
+(() => {
+  const g = $("marGrip"); let y0 = 0, s0 = 0, id = null;
+  g.addEventListener("pointerdown", e => { id = e.pointerId; y0 = e.clientY; s0 = S.size; g.setPointerCapture(id); g.classList.add("drag"); e.preventDefault(); });
+  g.addEventListener("pointermove", e => { if (e.pointerId !== id) return; setSize(s0 + (y0 - e.clientY) / HEIGHT_PER_W, false); });
+  const end = e => { if (e.pointerId !== id) return; id = null; g.classList.remove("drag"); store.set("size", S.size); };
+  g.addEventListener("pointerup", end); g.addEventListener("pointercancel", end);
+  g.addEventListener("dblclick", () => setSize(26, true));
+  g.addEventListener("keydown", e => {
+    if (e.key === "ArrowUp") { e.preventDefault(); setSize(S.size + 2, true); }
+    else if (e.key === "ArrowDown") { e.preventDefault(); setSize(S.size - 2, true); }
+  });
+})();
+window.addEventListener("resize", () => { if (S.size > sizeMax()) setSize(sizeMax(), false); });
 $("sens").oninput = e => { S.sens = +e.target.value; store.set("sens", S.sens); };
 $("octFree").onchange = e => { S.octFree = e.target.checked; store.set("octFree", S.octFree); };
 $("sound").onchange = e => { S.sound = e.target.checked; store.set("sound", S.sound); };
