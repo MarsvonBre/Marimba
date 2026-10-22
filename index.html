@@ -441,7 +441,7 @@ select,input[type=number]{font:inherit;font-size:14px;padding:7px 8px;border-rad
 <script>
 (() => {
 "use strict";
-const APP_VERSION = "9.13";
+const APP_VERSION = "9.14";
 const $ = id => document.getElementById(id);
 const NAMES = ["C","Cis","D","Dis","E","F","Fis","G","Gis","A","B","H"];
 const isAcc = m => [1,3,6,8,10].includes(((m % 12) + 12) % 12);
@@ -1749,8 +1749,31 @@ async function renderLib() {
       if (S.pieceId === rec.id) { S.pieceId = null; store.set("lastId", null); }
       renderLib();
     };
-    li.append(b, del); list.appendChild(li);
+    const sh = document.createElement("button"); sh.type = "button"; sh.className = "lib-del";
+    sh.setAttribute("aria-label", "„" + (rec.name || rec.fileName) + "“ teilen oder sichern"); sh.title = "Teilen / sichern";
+    sh.innerHTML = '<svg class="icon" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><path d="M12 3v12M7 8l5-5 5 5M5 13v6a2 2 0 0 0 2 2h10a2 2 0 0 0 2-2v-6"/></svg>';
+    sh.onclick = () => exportPiece(rec.id);
+    li.append(b, sh, del); list.appendChild(li);
   });
+}
+// Stück als Datei herausgeben (iPhone: Teilen-Menü → „In Dateien sichern“, PC: Download)
+async function exportPiece(id) {
+  let rec; try { rec = await DB.get(id); } catch {} if (!rec) return;
+  let bytes, ext, type;
+  if (rec.kind === "midi") { bytes = new Uint8Array(rec.data); ext = ".mid"; type = "audio/midi"; }
+  else if (rec.kind === "mxl") { const b = rec.data; bytes = new Uint8Array(b.length); for (let i = 0; i < b.length; i++) bytes[i] = b.charCodeAt(i) & 255; ext = ".mxl"; type = "application/vnd.recordare.musicxml"; }
+  else { bytes = new TextEncoder().encode(rec.data); ext = ".musicxml"; type = "application/vnd.recordare.musicxml+xml"; }
+  const base = String(rec.name || rec.fileName || "Stueck").trim().replace(/[\\/:*?"<>|]+/g, "").replace(/\s+/g, "_").slice(0, 80) || "Stueck";
+  const file = new File([bytes], base + ext, { type });
+  try {
+    if (navigator.canShare && navigator.canShare({ files: [file] })) { await navigator.share({ files: [file], title: rec.name || base }); return; }
+  } catch (e) { if (e && e.name === "AbortError") return; }
+  try {
+    const url = URL.createObjectURL(file), a = document.createElement("a");
+    a.href = url; a.download = file.name; document.body.appendChild(a); a.click(); a.remove();
+    setTimeout(() => URL.revokeObjectURL(url), 4000);
+    setMsg("„" + file.name + "“ wurde gespeichert.", "ok");
+  } catch { setMsg("Die Datei konnte hier nicht gespeichert werden.", "bad"); }
 }
 function openSettings() { $("setWin").hidden = false; setTimeout(() => $("setClose").focus(), 0); }
 function closeSettings() { $("setWin").hidden = true; }
