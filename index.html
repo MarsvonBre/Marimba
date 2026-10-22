@@ -130,7 +130,9 @@ button[disabled]{opacity:.45;cursor:default}
 .lib-item small{font-weight:400;font-size:12px;color:var(--muted)}
 .lib-del{padding:7px 9px;color:var(--muted)}
 .lib-del.armed{background:var(--bad);border-color:var(--bad);color:#fff}
-.lib-empty{padding:24px 16px;color:var(--muted);line-height:1.5}
+.lib-empty{padding:12px 16px 20px;color:var(--muted);line-height:1.5}
+.lib-sec{padding:14px 16px 4px !important;font-size:11px;text-transform:uppercase;letter-spacing:.08em;font-weight:700;color:var(--muted)}
+.lib-wait{padding:8px 16px !important;color:var(--muted);font-size:13px}
 .lib-foot{display:flex;align-items:center;gap:12px;flex-wrap:wrap;padding:10px max(16px, env(safe-area-inset-right, 0px)) 12px max(16px, env(safe-area-inset-left, 0px));border-top:1px solid var(--line)}
 @media (min-width:700px){.lib{align-items:center}.lib-panel{border-radius:14px}}
 /* Einstellungsfenster */
@@ -245,8 +247,7 @@ select,input[type=number]{font:inherit;font-size:14px;padding:7px 8px;border-rad
       </div>
       <ul class="lib-list" id="libList"></ul>
       <div class="lib-foot">
-        <button type="button" id="sampleBtn">Beispielstück öffnen</button>
-        <span class="hint" id="libInfo">Die Stücke werden nur auf diesem Gerät gespeichert.</span>
+        <span class="hint" id="libInfo">Vorgespeichert: Stücke aus dem Ordner „stuecke“ der App, auf allen Geräten. Meine Stücke: nur auf diesem Gerät.</span>
       </div>
     </div>
   </div>
@@ -440,7 +441,7 @@ select,input[type=number]{font:inherit;font-size:14px;padding:7px 8px;border-rad
 <script>
 (() => {
 "use strict";
-const APP_VERSION = "9.12";
+const APP_VERSION = "9.13";
 const $ = id => document.getElementById(id);
 const NAMES = ["C","Cis","D","Dis","E","F","Fis","G","Gis","A","B","H"];
 const isAcc = m => [1,3,6,8,10].includes(((m % 12) + 12) % 12);
@@ -1564,7 +1565,7 @@ const DB = {
 const KIND_LABEL = { xml: "MusicXML", mxl: "MusicXML (.mxl)", midi: "MIDI" };
 let persistAsked = false;
 
-async function openPiece(kind, data, fileName, rec) {
+async function openPiece(kind, data, fileName, rec, extra) {
   if (!rec) { $("fromM").value = ""; $("toM").value = ""; S.tempo = 100; $("tempo").value = 100; updTempo(); }
   else { $("fromM").value = rec.from || ""; $("toM").value = rec.to || ""; }
   const ok = kind === "midi" ? loadMIDI(data, fileName) : await loadXML(data, fileName);
@@ -1578,8 +1579,8 @@ async function openPiece(kind, data, fileName, rec) {
     const size = data.byteLength || data.length;
     if (!rec) {
       const all = await DB.all();
-      rec = all.find(r => r.fileName === fileName && r.size === size) || null;
-      if (!rec) rec = { name: $("pieceName").textContent, fileName, kind, data, size, added: Date.now() };
+      rec = all.find(r => (extra && extra.presetPath) ? r.presetPath === extra.presetPath : (!r.presetPath && r.fileName === fileName && r.size === size)) || null;
+      if (!rec) rec = Object.assign({ name: $("pieceName").textContent, fileName, kind, data, size, added: Date.now() }, extra || {});
     }
     rec.lastOpened = Date.now();
     rec.id = await DB.put(rec) || rec.id;
@@ -1603,28 +1604,77 @@ function savePieceSettings() {
 }
 function openSample() { S.pieceId = null; store.set("lastId", null); $("fromM").value = ""; $("toM").value = ""; S.tempo = 100; $("tempo").value = 100; updTempo(); return loadXML(sampleXML(), "Erste Schläge"); }
 
+// Erkennt MIDI, .mxl (ZIP) und MusicXML am Inhalt
+function detectPiece(ab) {
+  const u8 = new Uint8Array(ab);
+  const head = String.fromCharCode(...u8.slice(0, 4));
+  if (head === "MThd") return { kind: "midi", data: ab };
+  if (head.startsWith("PK")) {           // .mxl ist ein ZIP-Archiv
+    let bin = ""; for (let i = 0; i < u8.length; i += 8192) bin += String.fromCharCode.apply(null, u8.subarray(i, i + 8192));
+    return { kind: "mxl", data: bin };
+  }
+  let enc = "utf-8";
+  if (u8[0] === 0xFF && u8[1] === 0xFE) enc = "utf-16le";
+  else if (u8[0] === 0xFE && u8[1] === 0xFF) enc = "utf-16be";
+  const text = new TextDecoder(enc).decode(u8).replace(/^\uFEFF/, "");
+  if (/<score-(partwise|timewise)/.test(text)) return { kind: "xml", data: text };
+  if (/^%PDF/.test(head)) return { error: "Das ist ein PDF. Bitte erst in MuseScore öffnen und als MusicXML exportieren." };
+  return { error: "Diese Datei ist weder MusicXML noch MIDI. Exportiere die Noten in MuseScore als .mxl oder .musicxml." };
+}
 function handleFile(f) {
   if (!f) return;
   const name = f.name.replace(/\.[^.]+$/, "");
   const r = new FileReader();
   r.onerror = () => setMsg("Die Datei konnte nicht gelesen werden.", "bad");
   r.onload = () => {
-    const u8 = new Uint8Array(r.result);
-    const head = String.fromCharCode(...u8.slice(0, 4));
-    if (head === "MThd") { openPiece("midi", r.result, name); closeLib(); return; }
-    if (head.startsWith("PK")) {           // .mxl ist ein ZIP-Archiv
-      let bin = ""; for (let i = 0; i < u8.length; i += 8192) bin += String.fromCharCode.apply(null, u8.subarray(i, i + 8192));
-      openPiece("mxl", bin, name); closeLib(); return;
-    }
-    let enc = "utf-8";
-    if (u8[0] === 0xFF && u8[1] === 0xFE) enc = "utf-16le";
-    else if (u8[0] === 0xFE && u8[1] === 0xFF) enc = "utf-16be";
-    const text = new TextDecoder(enc).decode(u8).replace(/^\uFEFF/, "");
-    if (/<score-(partwise|timewise)/.test(text)) { openPiece("xml", text, name); closeLib(); return; }
-    if (/^%PDF/.test(head)) { setMsg("Das ist ein PDF. Bitte erst in MuseScore öffnen und als MusicXML exportieren.", "bad"); return; }
-    setMsg("Diese Datei ist weder MusicXML noch MIDI. Exportiere die Noten in MuseScore als .mxl oder .musicxml.", "bad");
+    const d = detectPiece(r.result);
+    if (d.error) { setMsg(d.error, "bad"); return; }
+    openPiece(d.kind, d.data, name); closeLib();
   };
   r.readAsArrayBuffer(f);
+}
+
+/* ---------- Vorgespeicherte Stücke aus dem Ordner „stuecke“ der Webseite ---------- */
+// Liste: stuecke/liste.json (optional, [{"datei":"x.mxl","titel":"…"}]) oder automatisch über GitHub
+const PRESET_EXT = /\.(mxl|musicxml|xml|mid|midi)$/i;
+let presetCache = null;
+async function loadPresetList() {
+  if (presetCache) return presetCache;
+  if (!/^https?:$/.test(location.protocol)) return [];
+  let list = null;
+  try {
+    const r = await fetch("stuecke/liste.json?" + Date.now(), { cache: "no-store" });
+    if (r.ok) list = (await r.json()).map(x => ({ path: "stuecke/" + x.datei, name: x.titel || x.datei.replace(PRESET_EXT, "") }));
+  } catch {}
+  if (!list && /\.github\.io$/.test(location.hostname)) {
+    try {
+      const owner = location.hostname.split(".")[0], repo = location.pathname.split("/").filter(Boolean)[0];
+      if (repo) {
+        const r = await fetch("https://api.github.com/repos/" + owner + "/" + repo + "/contents/stuecke", { cache: "no-store" });
+        if (r.ok) list = (await r.json()).filter(f => f.type === "file" && PRESET_EXT.test(f.name))
+          .map(f => ({ path: "stuecke/" + f.name, name: f.name.replace(PRESET_EXT, "").replace(/[_]+/g, " ") }));
+      }
+    } catch {}
+  }
+  if (list) { list.sort((a, b) => a.name.localeCompare(b.name, "de")); store.set("presetList", list); presetCache = list; return list; }
+  return store.get("presetList", []);   // ohne Verbindung: zuletzt bekannte Liste
+}
+async function openPreset(item) {
+  closeLib(); stopAll();
+  let rec = null;
+  try { rec = (await DB.all()).find(r => r.presetPath === item.path) || null; } catch {}
+  let d = null;
+  try {
+    const r = await fetch(encodeURI(item.path) + "?" + Date.now(), { cache: "no-store" });
+    if (!r.ok) throw new Error(r.status);
+    d = detectPiece(await r.arrayBuffer());
+    if (d.error) { setMsg(d.error, "bad"); return; }
+  } catch {
+    if (rec) d = { kind: rec.kind, data: rec.data };   // ohne Verbindung: gespeicherte Kopie
+    else { setMsg("„" + item.name + "“ konnte nicht geladen werden. Prüfe die Internetverbindung.", "bad"); return; }
+  }
+  if (rec) { rec.data = d.data; rec.kind = d.kind; rec.size = d.data.byteLength || d.data.length; }
+  openPiece(d.kind, d.data, item.name, rec, { presetPath: item.path, name: item.name });
 }
 ["fileIn2"].forEach(id => $(id).onchange = e => { const f = e.target.files[0]; e.target.value = ""; handleFile(f); });
 
@@ -1643,9 +1693,36 @@ async function renderLib() {
   try { all = await DB.all(); }
   catch { list.innerHTML = '<li class="lib-empty">Speichern ist in diesem Browser nicht möglich (z. B. im privaten Modus).</li>'; return; }
   all.sort((a, b) => (b.lastOpened || 0) - (a.lastOpened || 0));
+  const presetRecs = all.filter(r => r.presetPath);
+  all = all.filter(r => !r.presetPath);
   list.innerHTML = "";
+  const head = t => { const h = document.createElement("li"); h.className = "lib-sec"; h.textContent = t; list.appendChild(h); };
+  head("Vorgespeichert");
+  const demo = document.createElement("li");
+  const db = document.createElement("button"); db.type = "button"; db.className = "lib-item";
+  db.innerHTML = "<b>Erste Schläge</b><small>Beispielstück</small>";
+  db.onclick = () => { closeLib(); stopAll(); openSample(); };
+  demo.appendChild(db); if (!S.pieceId) demo.className = "cur"; list.appendChild(demo);
+  const presetSlot = document.createElement("li"); presetSlot.className = "lib-wait"; presetSlot.textContent = "Lädt …"; list.appendChild(presetSlot);
+  loadPresetList().then(pl => {
+    presetSlot.remove();
+    const frag = document.createDocumentFragment();
+    pl.forEach(item => {
+      const rec = presetRecs.find(r => r.presetPath === item.path);
+      const li = document.createElement("li");
+      if (rec && rec.id === S.pieceId) li.className = "cur";
+      const b = document.createElement("button"); b.type = "button"; b.className = "lib-item";
+      const nm = document.createElement("b"); nm.textContent = item.name;
+      const meta = document.createElement("small");
+      meta.textContent = (rec ? "zuletzt " + fmtDate(rec.lastOpened) : "noch nicht geöffnet") + (rec && rec.tempo && rec.tempo !== 100 ? " · Tempo " + rec.tempo + " %" : "") + (rec && (rec.from || rec.to) ? " · Takte " + (rec.from || 1) + "–" + (rec.to || "Ende") : "");
+      b.append(nm, meta); b.onclick = () => openPreset(item);
+      li.appendChild(b); frag.appendChild(li);
+    });
+    demo.after(frag);
+  });
+  head("Meine Stücke");
   if (!all.length) {
-    list.innerHTML = '<li class="lib-empty">Noch keine Stücke gespeichert. Tippe auf „Hinzufügen“ und wähle eine MusicXML- oder MIDI-Datei. Jedes geladene Stück landet automatisch hier.</li>';
+    list.insertAdjacentHTML("beforeend", '<li class="lib-empty">Noch keine eigenen Stücke. Tippe auf „Hinzufügen“ und wähle eine MusicXML- oder MIDI-Datei. Jedes geladene Stück landet automatisch hier.</li>');
     return;
   }
   all.forEach(rec => {
@@ -1700,7 +1777,6 @@ $("libBtn").onclick = openLib;
 $("libClose").onclick = closeLib;
 $("lib").addEventListener("click", e => { if (e.target === $("lib")) closeLib(); });
 document.addEventListener("keydown", e => { if (e.key === "Escape" && !$("lib").hidden) closeLib(); });
-$("sampleBtn").onclick = () => { closeLib(); stopAll(); openSample(); };
 
 /* ---------- Updates erkennen ---------- */
 // Holt die Seite ohne Zwischenspeicher und vergleicht die Versionsnummer
