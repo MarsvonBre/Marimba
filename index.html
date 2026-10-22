@@ -357,6 +357,19 @@ select,input[type=number]{font:inherit;font-size:14px;padding:7px 8px;border-rad
           </div>
           <p class="hint" id="micHint">Üben: Die App wartet, bis du die leuchtende Platte triffst. Durchspielen: Nach dem Einzählen spielst du ohne Pause durch, danach siehst du deine Fehler. Ohne Mikrofon kannst du die Platten unten antippen.</p>
         </section>
+        <section class="set-group">
+          <h3>Vorgespeicherte Stücke (GitHub)</h3>
+          <div class="grid">
+            <label>Repository
+              <input type="text" id="ghRepo" placeholder="Benutzer/Repository" autocomplete="off" autocapitalize="off" spellcheck="false">
+            </label>
+            <label>Zugangsschlüssel (Token)
+              <span class="pair"><input type="password" id="ghToken" placeholder="github_pat_…" autocomplete="off" autocapitalize="off" spellcheck="false"><button type="button" id="ghSave">Prüfen</button></span>
+            </label>
+          </div>
+          <p class="hint" id="ghStatus"></p>
+          <p class="hint">Damit lädst du eigene Stücke mit einem Tipp in den Ordner „stuecke“. Token erstellen: github.com → Profilbild → Settings → Developer settings → Fine-grained tokens → „Generate new token“. Bei „Repository access“ nur dein marimba-Repository wählen, bei „Permissions → Contents“ „Read and write“. Der Schlüssel bleibt nur auf diesem Gerät gespeichert. <button type="button" id="ghRemove">Schlüssel entfernen</button></p>
+        </section>
         <p class="hint ver">Version <span id="verNum"></span> · <button type="button" id="verCheck">Nach Update suchen</button></p>
       </div>
     </div>
@@ -441,7 +454,7 @@ select,input[type=number]{font:inherit;font-size:14px;padding:7px 8px;border-rad
 <script>
 (() => {
 "use strict";
-const APP_VERSION = "9.14";
+const APP_VERSION = "9.15";
 const $ = id => document.getElementById(id);
 const NAMES = ["C","Cis","D","Dis","E","F","Fis","G","Gis","A","B","H"];
 const isAcc = m => [1,3,6,8,10].includes(((m % 12) + 12) % 12);
@@ -1753,10 +1766,102 @@ async function renderLib() {
     sh.setAttribute("aria-label", "„" + (rec.name || rec.fileName) + "“ teilen oder sichern"); sh.title = "Teilen / sichern";
     sh.innerHTML = '<svg class="icon" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><path d="M12 3v12M7 8l5-5 5 5M5 13v6a2 2 0 0 0 2 2h10a2 2 0 0 0 2-2v-6"/></svg>';
     sh.onclick = () => exportPiece(rec.id);
-    li.append(b, sh, del); list.appendChild(li);
+    if (ghReady()) {
+      const up = document.createElement("button"); up.type = "button"; up.className = "lib-del";
+      up.setAttribute("aria-label", "„" + (rec.name || rec.fileName) + "“ in Vorgespeichert hochladen"); up.title = "In Vorgespeichert hochladen";
+      const UPICON = '<svg class="icon" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><path d="M7 18a4.5 4.5 0 0 1-.5-9A6 6 0 0 1 18 8a4 4 0 0 1 0 10"/><path d="M12 12v8M9 15l3-3 3 3"/></svg>';
+      up.innerHTML = UPICON;
+      let armedUp = 0;
+      up.onclick = async () => {
+        if (!armedUp) {
+          up.classList.add("armed"); up.textContent = "Hochladen?";
+          armedUp = setTimeout(() => { armedUp = 0; up.classList.remove("armed"); up.innerHTML = UPICON; }, 3000);
+          return;
+        }
+        clearTimeout(armedUp); up.disabled = true; up.textContent = "…";
+        await uploadPiece(rec.id);
+        renderLib();
+      };
+      li.append(b, up, sh, del);
+    } else li.append(b, sh, del);
+    list.appendChild(li);
   });
 }
 // Stück als Datei herausgeben (iPhone: Teilen-Menü → „In Dateien sichern“, PC: Download)
+/* ---------- Hochladen in den Ordner „stuecke“ über die GitHub-Schnittstelle ---------- */
+function ghDefaultRepo() {
+  if (/\.github\.io$/.test(location.hostname)) {
+    const repo = location.pathname.split("/").filter(Boolean)[0];
+    if (repo) return location.hostname.split(".")[0] + "/" + repo;
+  }
+  return "";
+}
+const GH = { repo: store.get("ghRepo", "") || ghDefaultRepo(), token: store.get("ghToken", "") };
+const ghReady = () => !!(GH.repo && GH.token);
+function ghApi(path, opt) {
+  return fetch("https://api.github.com/repos/" + GH.repo + path, Object.assign({ cache: "no-store" }, opt, {
+    headers: Object.assign({ "Authorization": "Bearer " + GH.token, "Accept": "application/vnd.github+json" }, (opt && opt.headers) || {})
+  }));
+}
+function pieceFile(rec) {
+  let bytes, ext;
+  if (rec.kind === "midi") { bytes = new Uint8Array(rec.data); ext = ".mid"; }
+  else if (rec.kind === "mxl") { const b = rec.data; bytes = new Uint8Array(b.length); for (let i = 0; i < b.length; i++) bytes[i] = b.charCodeAt(i) & 255; ext = ".mxl"; }
+  else { bytes = new TextEncoder().encode(rec.data); ext = ".musicxml"; }
+  const base = String(rec.name || rec.fileName || "Stueck").trim().replace(/[\\/:*?"<>|#%]+/g, "").replace(/\s+/g, "_").slice(0, 80) || "Stueck";
+  return { bytes, name: base + ext };
+}
+function toBase64(bytes) { let s = ""; for (let i = 0; i < bytes.length; i += 8192) s += String.fromCharCode.apply(null, bytes.subarray(i, i + 8192)); return btoa(s); }
+async function uploadPiece(id) {
+  let rec; try { rec = await DB.get(id); } catch {} if (!rec) return;
+  const f = pieceFile(rec), path = "stuecke/" + f.name;
+  setMsg("„" + rec.name + "“ wird hochgeladen …");
+  try {
+    let sha;
+    const ex = await ghApi("/contents/" + encodeURI(path));
+    if (ex.ok) sha = (await ex.json()).sha;
+    else if (ex.status === 401 || ex.status === 403) throw new Error("auth");
+    const r = await ghApi("/contents/" + encodeURI(path), {
+      method: "PUT", headers: { "Content-Type": "application/json" },
+      body: JSON.stringify({ message: (sha ? "Stück aktualisiert: " : "Stück hinzugefügt: ") + rec.name, content: toBase64(f.bytes), sha })
+    });
+    if (r.status === 401 || r.status === 403) throw new Error("auth");
+    if (!r.ok) throw new Error("http " + r.status);
+    // Lokale Kopie wird zum vorgespeicherten Stück, Tempo und Takte bleiben erhalten
+    rec.presetPath = path; rec.name = f.name.replace(PRESET_EXT, "").replace(/_+/g, " ");
+    await DB.put(rec);
+    presetCache = null;
+    setMsg("„" + rec.name + "“ ist jetzt unter „Vorgespeichert“, auf allen Geräten.", "ok");
+  } catch (e) {
+    setMsg(e && e.message === "auth" ? "GitHub hat den Zugangsschlüssel abgelehnt. Prüfe ihn in den Einstellungen (Rechte: Contents, Read and write)." : "Hochladen hat nicht geklappt. Prüfe die Internetverbindung und versuche es noch einmal.", "bad");
+  }
+}
+(function ghSettings() {
+  $("ghRepo").value = GH.repo; $("ghToken").value = GH.token ? "••••••••" : "";
+  const status = (t, cls) => { $("ghStatus").textContent = t; $("ghStatus").style.color = cls === "ok" ? "var(--ok)" : cls === "bad" ? "var(--bad)" : ""; };
+  status(ghReady() ? "Verbunden mit " + GH.repo + "." : "Nicht verbunden.");
+  $("ghToken").addEventListener("focus", () => { if ($("ghToken").value === "••••••••") $("ghToken").value = ""; });
+  $("ghSave").onclick = async () => {
+    const repo = $("ghRepo").value.trim().replace(/^https?:\/\/github\.com\//, "").replace(/\/$/, "");
+    const tok = $("ghToken").value === "••••••••" ? GH.token : $("ghToken").value.trim();
+    if (!/^[\w.-]+\/[\w.-]+$/.test(repo)) { status("Bitte das Repository als „Benutzer/Repository“ eintragen, z. B. MarsvonBre/marimba.", "bad"); return; }
+    if (!tok) { status("Bitte den Zugangsschlüssel einfügen.", "bad"); return; }
+    status("Prüfe …");
+    const old = { ...GH }; GH.repo = repo; GH.token = tok;
+    try {
+      const r = await ghApi("");
+      const j = r.ok ? await r.json() : null;
+      if (!j || !(j.permissions && j.permissions.push)) throw new Error();
+      store.set("ghRepo", repo); store.set("ghToken", tok);
+      $("ghToken").value = "••••••••";
+      status("Verbunden mit " + repo + ". In „Meine Stücke“ hat jedes eigene Stück jetzt einen Hochladen-Knopf.", "ok");
+    } catch {
+      GH.repo = old.repo; GH.token = old.token;
+      status("Das hat nicht geklappt. Prüfe Repository-Name und Schlüssel (Rechte: Contents, Read and write).", "bad");
+    }
+  };
+  $("ghRemove").onclick = () => { GH.token = ""; store.set("ghToken", ""); $("ghToken").value = ""; status("Schlüssel entfernt."); };
+})();
 async function exportPiece(id) {
   let rec; try { rec = await DB.get(id); } catch {} if (!rec) return;
   let bytes, ext, type;
