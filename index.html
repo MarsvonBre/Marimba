@@ -153,6 +153,40 @@ button[disabled]{opacity:.45;cursor:default}
 .field-sub{font-size:12px;color:var(--muted);line-height:1.4}
 .name-seg button{font-weight:500}
 .name-seg button b{font-weight:800}
+/* Instrument-Profile und Einlernen */
+.prof-acts{margin-top:10px;flex-wrap:wrap}
+.pair input[type=text],.pair input[type=password]{width:auto;flex:1;min-width:0}
+.grid .field{grid-column:1/-1}
+.name-seg{align-self:flex-start}
+.mar-right{justify-self:end;display:flex;align-items:center;gap:8px;min-width:0}
+#profQuick{background:transparent;color:#e9edf2;border:1px solid rgba(255,255,255,.22);font-size:12px;padding:4px 6px;max-width:150px;border-radius:8px}
+#profQuick option{color:#111}
+.learn{position:fixed;z-index:28;left:0;right:0;top:0;bottom:var(--lrn-bottom,40%);display:flex;justify-content:center;align-items:flex-start;padding-top:env(safe-area-inset-top,0px);background:color-mix(in srgb, var(--bg) 70%, transparent);backdrop-filter:blur(2px)}
+.learn-in{background:var(--surface);color:var(--ink);width:min(560px,100%);max-height:100%;overflow-y:auto;border-radius:0 0 14px 14px;box-shadow:0 8px 30px rgba(0,0,0,.25)}
+.lrn-head{display:flex;align-items:center;gap:8px;padding:12px max(16px, env(safe-area-inset-right, 0px)) 8px max(16px, env(safe-area-inset-left, 0px));border-bottom:1px solid var(--line)}
+.lrn-head h2{font-family:var(--f-display);font-size:19px;margin:0}
+.lrn-head .sp{flex:1}
+.lrn-body{padding:12px max(16px, env(safe-area-inset-right, 0px)) 16px max(16px, env(safe-area-inset-left, 0px));display:flex;flex-direction:column;gap:10px;line-height:1.45}
+.lrn-body p{margin:0}
+.lrn-tips{margin:0;padding-left:20px;display:flex;flex-direction:column;gap:4px;color:var(--muted)}
+.lrn-scope{display:flex;flex-direction:column;gap:8px}
+.lrn-scope label{display:flex;align-items:center;gap:6px;flex-wrap:wrap}
+.lrn-scope select{padding:4px 6px}
+.lrn-btns{display:flex;gap:8px;flex-wrap:wrap}
+.lrn-progress{height:6px;border-radius:3px;background:var(--line);overflow:hidden}
+.lrn-progress i{display:block;height:100%;width:0;background:var(--accent);transition:width .2s}
+.lrn-count{font-size:12px;color:var(--muted);font-variant-numeric:tabular-nums}
+.lrn-note{display:flex;align-items:baseline;gap:14px;flex-wrap:wrap}
+.lrn-note > span:first-child{font-family:var(--f-display);font-weight:700;font-size:44px;line-height:1;letter-spacing:-.02em}
+.lrn-kind{font-weight:700;font-size:20px;color:var(--accent)}
+.lrn-desc{color:var(--muted)}
+.lrn-dots{display:flex;gap:8px}
+.lrn-dots i{width:14px;height:14px;border-radius:50%;border:2px solid var(--line)}
+.lrn-dots i.done{background:var(--ok);border-color:var(--ok)}
+.lrn-dots i.cur{border-color:var(--accent)}
+.lrn-fb{min-height:1.4em;font-weight:600}
+.lrn-fb.ok{color:var(--ok)} .lrn-fb.bad{color:var(--bad)}
+.lrn-big{font-family:var(--f-display);font-weight:700;font-size:32px}
 /* Kopfleiste einklappen */
 /* Eingeklappt: nur Zurück, Abspielen, Weiter und der Pfeil */
 .app.top-hidden .brand,.app.top-hidden #libBtn,.app.top-hidden #setBtn,.app.top-hidden #toolbar,.app.top-hidden #startBtn{display:none}
@@ -169,7 +203,7 @@ details.settings summary::-webkit-details-marker{display:none}
 .grid{display:grid;grid-template-columns:repeat(auto-fit,minmax(170px,1fr));gap:10px 16px;margin-top:10px}
 .grid label{display:flex;flex-direction:column;gap:4px;font-size:12px;color:var(--muted);font-weight:600}
 .grid label.inline{flex-direction:row;align-items:center;gap:8px;color:var(--ink);font-size:14px;font-weight:500}
-select,input[type=number]{font:inherit;font-size:14px;padding:7px 8px;border-radius:8px;border:1px solid var(--line);background:var(--surface);color:var(--ink)}
+select,input[type=number],input[type=text],input[type=password]{font:inherit;font-size:14px;padding:7px 8px;border-radius:8px;border:1px solid var(--line);background:var(--surface);color:var(--ink)}
 .pair{display:flex;gap:6px;align-items:center}
 .pair input{width:64px}
 .hint{font-size:13px;color:var(--muted);line-height:1.45;max-width:65ch}
@@ -260,6 +294,28 @@ select,input[type=number]{font:inherit;font-size:14px;padding:7px 8px;border-rad
         <button type="button" id="setClose" aria-label="Schließen"><svg class="icon" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><path d="M6 6l12 12M18 6 6 18"/></svg></button>
       </div>
       <div class="set-body">
+        <section class="set-group">
+          <h3>Instrument</h3>
+          <div class="grid">
+            <label>Aktives Instrument
+              <select id="profSel"></select>
+            </label>
+            <label>Name
+              <span class="pair"><input type="text" id="profName" maxlength="40" autocomplete="off"><button type="button" id="profRen">Speichern</button></span>
+            </label>
+          </div>
+          <div class="pair prof-acts">
+            <button type="button" id="profNew">Neues Instrument</button>
+            <button type="button" id="profDel">Löschen</button>
+          </div>
+          <p class="hint" id="profStat"></p>
+          <div class="pair prof-acts">
+            <button type="button" class="primary" id="learnStart">Einlernen</button>
+            <button type="button" id="testStart">Erkennung testen</button>
+            <button type="button" id="learnReset">Eingelerntes löschen</button>
+          </div>
+          <p class="hint">Beim Einlernen lernt die App, wie jede Platte deines Instruments in deinem Raum klingt. Danach erkennt sie deine Töne viel sicherer. Jedes Instrument hat außerdem eigene fehlende Platten und einen eigenen Marimba-Bereich.</p>
+        </section>
         <section class="set-group">
           <h3>Tonnamen und Vorzeichen</h3>
           <div class="grid">
@@ -383,6 +439,58 @@ select,input[type=number]{font:inherit;font-size:14px;padding:7px 8px;border-rad
       </div>
     </div>
   </div>
+  <div class="learn" id="learn" hidden role="dialog" aria-modal="false" aria-labelledby="lrnTitle">
+    <div class="learn-in">
+      <div class="lrn-head">
+        <h2 id="lrnTitle">Einlernen</h2>
+        <span class="sp"></span>
+        <button type="button" id="lrnClose" aria-label="Schließen"><svg class="icon" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><path d="M6 6l12 12M18 6 6 18"/></svg></button>
+      </div>
+      <!-- Start -->
+      <div id="lrnIntro" class="lrn-body">
+        <p>Die App lernt jetzt, wie <b id="lrnProfName">dein Instrument</b> klingt. Das dauert etwa 1 Minute pro Oktave.</p>
+        <ul class="lrn-tips">
+          <li>Stell das Handy so hin wie beim Üben.</li>
+          <li>Spiele mit deinen normalen Schlägeln.</li>
+          <li>Die Platte, die du anschlagen sollst, leuchtet unten blau. Jede Platte wird 3-mal angeschlagen: normal, leise und laut.</li>
+        </ul>
+        <div class="lrn-scope">
+          <label class="inline"><input type="radio" name="lrnScope" value="range" checked> Alle Platten von <select id="lrnLo" aria-label="Tiefste Platte"></select> bis <select id="lrnHi" aria-label="Höchste Platte"></select></label>
+          <label class="inline" id="lrnScopePieceWrap"><input type="radio" name="lrnScope" value="piece"> Nur die Platten dieses Stücks (<span id="lrnPieceCount">0</span>)</label>
+          <label class="inline"><input type="checkbox" id="lrnSkipDone"> Schon eingelernte Platten überspringen</label>
+        </div>
+        <p class="hint">Fehlende Platten (siehe „Platten anpassen“) werden übersprungen.</p>
+        <div class="lrn-btns"><button type="button" class="primary" id="lrnGo">Los geht's</button></div>
+      </div>
+      <!-- Ablauf -->
+      <div id="lrnRun" class="lrn-body" hidden>
+        <div class="lrn-progress"><i id="lrnBar"></i></div>
+        <div class="lrn-count" id="lrnCount">Platte 1 von 1</div>
+        <div class="lrn-note"><span id="lrnNote">–</span><span class="lrn-kind" id="lrnKind">Ruhe bitte</span></div>
+        <p class="lrn-desc" id="lrnDesc"></p>
+        <div class="lrn-dots" id="lrnDots"><i></i><i></i><i></i></div>
+        <p class="lrn-fb" id="lrnFb" aria-live="polite"></p>
+        <div class="lrn-btns">
+          <button type="button" id="lrnBack">Zurück</button>
+          <button type="button" id="lrnSkip">Platte überspringen</button>
+          <button type="button" id="lrnRedo">Platte wiederholen</button>
+        </div>
+      </div>
+      <!-- Fertig -->
+      <div id="lrnDone" class="lrn-body" hidden>
+        <p class="lrn-big">Fertig!</p>
+        <p id="lrnDoneTxt"></p>
+        <div class="lrn-btns"><button type="button" class="primary" id="lrnTest">Erkennung testen</button><button type="button" id="lrnFinish">Schließen</button></div>
+      </div>
+      <!-- Test -->
+      <div id="lrnTestView" class="lrn-body" hidden>
+        <p>Schlage eine beliebige Platte an. Die App zeigt, was sie erkannt hat.</p>
+        <div class="lrn-note"><span id="tstNote">–</span><span class="lrn-kind" id="tstConf"></span></div>
+        <p class="lrn-desc" id="tstAlt"></p>
+        <div class="lrn-btns"><button type="button" id="tstClose">Fertig</button></div>
+      </div>
+    </div>
+  </div>
   <div class="update-bar" id="updBar" hidden>
     <span>Neue Version verfügbar.</span>
     <button type="button" class="primary" id="updNow">Jetzt aktualisieren</button>
@@ -450,7 +558,7 @@ select,input[type=number]{font:inherit;font-size:14px;padding:7px 8px;border-rad
   <div class="mar-bar">
     <button type="button" id="editBars" class="edit-bars" aria-pressed="false"><svg class="icon" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" aria-hidden="true"><rect x="3" y="6" width="3" height="12" rx="1"/><rect x="8.5" y="6" width="3" height="12" rx="1"/><path d="M14 9l6 6M20 9l-6 6"/></svg><span id="editBarsTxt">Platten anpassen</span></button>
     <div class="mar-grip" id="marGrip" role="slider" tabindex="0" aria-label="Marimba größer oder kleiner ziehen" title="Ziehen: Marimba größer oder kleiner" aria-valuemin="14" aria-valuemax="56"><span></span></div>
-    <span class="mar-info" id="marInfo"></span>
+    <span class="mar-right"><span class="mar-info" id="marInfo"></span><select id="profQuick" aria-label="Instrument wählen"></select></span>
   </div>
   <section class="marimba-wrap gut" id="marWrap" aria-label="Marimba">
     <div id="marimba"></div>
@@ -463,7 +571,7 @@ select,input[type=number]{font:inherit;font-size:14px;padding:7px 8px;border-rad
 <script>
 (() => {
 "use strict";
-const APP_VERSION = "9.18";
+const APP_VERSION = "10";
 const $ = id => document.getElementById(id);
 const NAMES = ["C","Cis","D","Dis","E","F","Fis","G","Gis","A","B","H"];
 const isAcc = m => [1,3,6,8,10].includes(((m % 12) + 12) % 12);
@@ -1232,6 +1340,7 @@ function practiceAt(measure) {
 /* ---------- Üben: Eingabe vergleichen ---------- */
 const key = m => S.octFree ? ((m % 12) + 12) % 12 : m;
 function tap(m) {
+  if (!$("learn").hidden) return;          // beim Einlernen nichts abspielen, sonst hört das Mikrofon den Lautsprecher
   if (S.editBars) { toggleMissing(m); return; }
   if (!(S.run && S.micOn)) strike(m);
   flash([m], "hit", 120);
@@ -1289,6 +1398,7 @@ async function micStart() {
   src.connect(anBig); src.connect(anSmall);
   spec = new Float32Array(anBig.frequencyBinCount); td = new Float32Array(1024);
   S.micOn = true; $("meter").hidden = false; noiseSpec = {};
+  noiseF = prof().noise ? Float32Array.from(prof().noise) : null;
   fillSinks();
   $("micBtn").setAttribute("aria-pressed", "true"); $("micTxt").textContent = "Hört zu";
   const loop = () => {
@@ -1305,10 +1415,14 @@ async function micStart() {
     if (rms < Math.min(thr * 0.7, floorRms * 2.5) && now - lastOnset > 600 && ++noiseTick % 6 === 0) {
       const sc = scan();
       for (const m in sc) noiseSpec[m] = noiseSpec[m] === undefined ? sc[m] : noiseSpec[m] * 0.85 + sc[m] * 0.15;
+      const fs = fscan();
+      if (!noiseF) noiseF = fs; else for (let i = 0; i < FN; i++) noiseF[i] = noiseF[i] * 0.85 + fs[i] * 0.15;
+      if (L.phase === "noise") L.noiseN++;
     }
-    if (rms > thr && rms > prevRms * 1.35 && now - lastOnset > 110 && (S.mode === "practice" || S.run)) {
-      lastOnset = now;
-      const o = { t: now, base: scan(), acc: {} };
+    if (L.peak !== undefined && now - lastOnset < 260 && rms > L.peak) L.peak = rms;
+    if (rms > thr && rms > prevRms * 1.35 && now - lastOnset > 110 && (S.mode === "practice" || S.run || L.listen)) {
+      lastOnset = now; L.peak = rms;
+      const o = { t: now, base: scan(), acc: {}, fb: fscan() };
       setTimeout(() => accum(o), 90);
       setTimeout(() => { accum(o); handleOnset(o); }, 210);
     }
@@ -1338,9 +1452,88 @@ function scan() {
   }
   return out;
 }
+/* ---------- Klang-Fingerabdruck für eingelernte Instrumente ---------- */
+// Fester Bereich C2–C8 je Halbton, damit alle Muster vergleichbar sind
+const F_LO = 36, F_HI = 108, FN = F_HI - F_LO + 1;
+let noiseF = null;
+function fscan() {
+  anBig.getFloatFrequencyData(spec);
+  const binHz = ctx.sampleRate / anBig.fftSize, out = new Float32Array(FN);
+  for (let i = 0; i < FN; i++) {
+    const f = 440 * Math.pow(2, (F_LO + i - 69) / 12), b = f / binHz;
+    let mx = -200;
+    for (let k = Math.floor(b * 0.985); k <= Math.ceil(b * 1.015) && k < spec.length; k++) if (spec[k] > mx) mx = spec[k];
+    out[i] = Math.pow(10, mx / 20);
+  }
+  return out;
+}
+// Aus einem Anschlag den normierten Fingerabdruck bilden (Dauergeräusch abgezogen, Lautstärke herausgerechnet)
+function fingerprint(o) {
+  if (!o.fa) return null;
+  const v = new Float32Array(FN); let n = 0;
+  for (let i = 0; i < FN; i++) { const x = Math.max(0, o.fa[i] - 3 * (noiseF ? noiseF[i] : 0)); v[i] = Math.sqrt(x); n += v[i] * v[i]; }
+  n = Math.sqrt(n); if (n < 1e-4) return null;
+  for (let i = 0; i < FN; i++) v[i] /= n;
+  return v;
+}
+const dot = (a, b) => { let s = 0; for (let i = 0; i < FN; i++) s += a[i] * b[i]; return s; };
+function tmplOf(m) { const t = prof().templates[m]; return t ? (t._f || (t._f = Float32Array.from(t.v))) : null; }
+function learnedNotes() { return Object.keys(prof().templates).map(Number); }
+// Beste Mischung aus zwei Mustern (nicht negativ): liefert Übereinstimmung und Anteile
+function pairFit(v, A, B) {
+  const ab = dot(A, B), av = dot(A, v), bv = dot(B, v), den = 1 - ab * ab;
+  let a = den > 1e-6 ? (av - ab * bv) / den : av, b = den > 1e-6 ? (bv - ab * av) / den : 0;
+  if (a < 0) { a = 0; b = Math.max(0, bv); } else if (b < 0) { b = 0; a = Math.max(0, av); }
+  const nn = Math.sqrt(a * a + b * b + 2 * a * b * ab);
+  return { sim: nn > 1e-9 ? (a * av + b * bv) / nn : 0, a, b };
+}
+// Erkennen: welche eine oder zwei Platten passen am besten? expected = erwartete Töne (bevorzugt)
+function recognize(v, expected) {
+  const keys = learnedNotes(); if (!keys.length) return null;
+  const sims = keys.map(m => [m, dot(v, tmplOf(m))]).sort((x, y) => y[1] - x[1]);
+  const [b1, s1] = sims[0], s2 = sims[1] ? sims[1][1] : 0;
+  let pair = null;
+  const top = sims.slice(0, 8);
+  for (let i = 0; i < top.length; i++) for (let j = i + 1; j < top.length; j++) {
+    const f = pairFit(v, tmplOf(top[i][0]), tmplOf(top[j][0]));
+    if (!pair || f.sim > pair.sim) pair = Object.assign(f, { m: [top[i][0], top[j][0]] });
+  }
+  let best = { notes: [b1], sim: s1, margin: s1 - s2 };
+  if (pair && pair.sim > s1 + 0.06 && Math.min(pair.a, pair.b) > 0.4 * Math.max(pair.a, pair.b))
+    best = { notes: pair.m.slice().sort((x, y) => x - y), sim: pair.sim, margin: pair.sim - s1 };
+  // Erwartete Töne bevorzugen, wenn sie fast genauso gut passen
+  if (expected && expected.length && expected.length <= 2) {
+    const cand = expected.map(x => {
+      const same = keys.filter(k => S.octFree ? pc(k) === pc(x) : k === x);
+      return same.sort((p, q) => dot(v, tmplOf(q)) - dot(v, tmplOf(p)))[0];
+    });
+    if (cand.every(c => c !== undefined)) {
+      const es = cand.length === 1 ? dot(v, tmplOf(cand[0])) : pairFit(v, tmplOf(cand[0]), tmplOf(cand[1])).sim;
+      if (es >= 0.72 && es >= best.sim - 0.06) return { notes: expected.slice(), sim: es, sure: true, matchedExpected: true, used: cand };
+    }
+  }
+  best.sure = best.sim >= 0.75 && best.margin >= 0.03;
+  return best;
+}
+function modelCovers(exp) {
+  const keys = learnedNotes(); if (keys.length < 3) return false;
+  return exp.every(x => keys.some(k => S.octFree ? pc(k) === pc(x) : k === x));
+}
+// Weiterlernen: sicher erkannte, richtige Anschläge verfeinern das Muster ein wenig
+let profSaveTimer = 0;
+function refine(m, v) {
+  const t = prof().templates[m]; if (!t) return;
+  const f = tmplOf(m); let n = 0;
+  for (let i = 0; i < FN; i++) { f[i] = f[i] * 0.95 + v[i] * 0.05; n += f[i] * f[i]; }
+  n = Math.sqrt(n); for (let i = 0; i < FN; i++) f[i] /= n;
+  t.v = Array.from(f, x => Math.round(x * 1000) / 1000); t.n = (t.n || 0) + 1;
+  clearTimeout(profSaveTimer); profSaveTimer = setTimeout(saveProfiles, 3000);
+}
 function accum(o) {
   const s = scan();
   for (const m in s) o.acc[m] = (o.acc[m] || 0) + Math.max(0, s[m] - o.base[m] * 0.8);
+  const f = fscan(); o.fa = o.fa || new Float32Array(FN);
+  for (let i = 0; i < FN; i++) o.fa[i] += Math.max(0, f[i] - o.fb[i] * 0.8);
 }
 function analyze(acc) {
   const [lo, hi] = detRange(), s = {};
@@ -1359,6 +1552,24 @@ function analyze(acc) {
   return { s, max, peaks };
 }
 function handleOnset(o) {
+  if (L.listen) { learnOnset(o); return; }
+  const v = fingerprint(o);
+  // Durchspielen: eingelerntes Muster nutzen, wenn sicher
+  if (S.run && v && learnedNotes().length >= 3) {
+    const r = recognize(v, null);
+    if (r && r.sure) { const s2 = {}; r.notes.forEach(m => s2[m] = 1); recordOnset(o.t, { s: s2, max: 1, peaks: r.notes }); return; }
+  }
+  // Üben: eingelerntes Muster, wenn alle erwarteten Töne eingelernt sind
+  if (!S.run && S.mode === "practice" && v) {
+    const e0 = S.events[S.idx], exp0 = e0 ? playable(e0) : [];
+    if (exp0.length && modelCovers(exp0)) {
+      const r = recognize(v, exp0);
+      if (!r || !r.sure) { setMsg("Nicht sicher erkannt. Bitte noch einmal anschlagen."); return; }
+      if (r.matchedExpected && r.sim >= 0.85 && r.used && r.used.length === 1) refine(r.used[0], v);
+      register(r.matchedExpected ? exp0 : r.notes, "mic");
+      return;
+    }
+  }
   const an = analyze(o.acc); if (!an) return;
   if (S.run) { recordOnset(o.t, an); return; }
   if (S.mode !== "practice") return;
@@ -1470,7 +1681,7 @@ function rangeChanged() {
 function usedSet() { const u = new Set(); S.events.forEach(e => e.notes.forEach(m => u.add(m))); return u; }
 function toggleMissing(m) {
   if (S.missing.has(m)) S.missing.delete(m); else S.missing.add(m);
-  store.set("missing", [...S.missing]);
+  store.set("missing", [...S.missing]); profSync();
   const b = bars.get(m); if (b) b.classList.toggle("missing", S.missing.has(m));
   updMarInfo(); editMsg();
 }
@@ -2000,8 +2211,243 @@ document.addEventListener("keydown", e => {
   else if (e.key === "ArrowLeft") { e.preventDefault(); $("prevBtn").click(); }
 });
 
+/* ---------- Instrument-Profile ---------- */
+function newProfile(name) {
+  return { id: "p" + Date.now().toString(36) + Math.random().toString(36).slice(2, 5), name, range: "auto", lo: 45, hi: 96, missing: [], templates: {}, noise: null, learnedAt: 0 };
+}
+S.profiles = store.get("profiles", null);
+if (!Array.isArray(S.profiles) || !S.profiles.length) {
+  const p0 = newProfile("Meine Marimba");
+  Object.assign(p0, { range: S.range, lo: S.lo, hi: S.hi, missing: [...S.missing] });   // bisherige Einstellungen übernehmen
+  S.profiles = [p0];
+}
+S.profId = store.get("profId", S.profiles[0].id);
+function prof() { return S.profiles.find(x => x.id === S.profId) || S.profiles[0]; }
+function saveProfiles() {
+  const clean = S.profiles.map(p => Object.assign({}, p, { templates: Object.fromEntries(Object.entries(p.templates || {}).map(([k, t]) => [k, { v: t.v, n: t.n }])) }));
+  store.set("profiles", clean); store.set("profId", S.profId);
+}
+function profSync() { const p = prof(); p.range = S.range; p.lo = S.lo; p.hi = S.hi; p.missing = [...S.missing]; saveProfiles(); }
+function updProfUI() {
+  const opts = S.profiles.map(p => '<option value="' + p.id + '"></option>').join("");
+  ["profSel", "profQuick"].forEach(id => {
+    const sel = $(id); sel.innerHTML = opts;
+    [...sel.options].forEach((o, i) => o.textContent = S.profiles[i].name);
+    sel.value = prof().id;
+  });
+  const p = prof(), n = Object.keys(p.templates || {}).length;
+  $("profName").value = p.name;
+  $("profDel").disabled = S.profiles.length < 2;
+  $("profStat").textContent = n ? n + " Platten eingelernt" + (p.learnedAt ? ", zuletzt am " + new Date(p.learnedAt).toLocaleDateString("de-DE") : "") + ". Die App erkennt diese Töne mit dem eingelernten Klang." : "Noch nicht eingelernt. Die App erkennt Töne mit der Standard-Methode.";
+  $("testStart").disabled = n < 3; $("learnReset").disabled = !n;
+}
+function applyProfile() {
+  const p = prof();
+  S.range = p.range || "auto"; S.lo = p.lo ?? 45; S.hi = p.hi ?? 96; S.missing = new Set(p.missing || []);
+  $("range").value = S.range; $("lo").value = S.lo; $("hi").value = S.hi;
+  $("customWrap").hidden = S.range !== "custom";
+  noiseF = p.noise ? Float32Array.from(p.noise) : null;
+  buildMarimba(); if (S.events.length) setCurrent(S.idx);
+  updMissList(); updMarInfo(); updProfUI();
+}
+function switchProfile(id) { profSync(); S.profId = id; saveProfiles(); applyProfile(); rangeMsg(); setMsg("Instrument: " + prof().name + "."); }
+$("profSel").onchange = e => switchProfile(e.target.value);
+$("profQuick").onchange = e => switchProfile(e.target.value);
+$("profQuick").addEventListener("pointerdown", e => e.stopPropagation());
+$("profRen").onclick = () => { const v = $("profName").value.trim(); if (!v) return; prof().name = v; saveProfiles(); updProfUI(); };
+$("profName").addEventListener("keydown", e => { if (e.key === "Enter") $("profRen").click(); });
+$("profNew").onclick = () => {
+  profSync();
+  const p = newProfile("Instrument " + (S.profiles.length + 1));
+  S.profiles.push(p); S.profId = p.id; saveProfiles(); applyProfile();
+  $("profName").focus(); $("profName").select();
+};
+(() => {
+  let armed = 0;
+  $("profDel").onclick = () => {
+    if (S.profiles.length < 2) return;
+    if (!armed) { $("profDel").textContent = "Wirklich löschen?"; $("profDel").classList.add("armed"); armed = setTimeout(() => { armed = 0; $("profDel").textContent = "Löschen"; $("profDel").classList.remove("armed"); }, 3000); return; }
+    clearTimeout(armed); armed = 0; $("profDel").textContent = "Löschen"; $("profDel").classList.remove("armed");
+    S.profiles = S.profiles.filter(p => p.id !== S.profId); S.profId = S.profiles[0].id; saveProfiles(); applyProfile();
+  };
+  let armed2 = 0;
+  $("learnReset").onclick = () => {
+    if (!armed2) { $("learnReset").textContent = "Wirklich löschen?"; armed2 = setTimeout(() => { armed2 = 0; $("learnReset").textContent = "Eingelerntes löschen"; }, 3000); return; }
+    clearTimeout(armed2); armed2 = 0; $("learnReset").textContent = "Eingelerntes löschen";
+    prof().templates = {}; prof().noise = null; prof().learnedAt = 0; saveProfiles(); updProfUI();
+  };
+})();
+
+/* ---------- Einlernen ---------- */
+const KINDS = [
+  { t: "Normaler Schlag", d: "Schlage die Platte in der Mitte an, so wie du normalerweise spielst." },
+  { t: "Leiser Schlag", d: "Jetzt ganz leicht anschlagen, wie bei einer leisen Stelle (piano)." },
+  { t: "Lauter Schlag", d: "Jetzt kräftig anschlagen, wie bei einer lauten Stelle (forte). Nicht übertreiben." }
+];
+const L = { listen: false, phase: "", list: [], i: 0, k: 0, hits: [], noiseN: 0, test: false, peak: undefined, saved: null, wait: 0 };
+function fillNoteSelect(sel, from, to, val) {
+  const o = []; for (let m = from; m <= to; m++) if (!isAcc(m)) o.push('<option value="' + m + '">' + NAMES[pc(m)] + (Math.floor(m / 12) - 1) + "</option>");
+  sel.innerHTML = o.join(""); sel.value = String(val);
+}
+function lrnShow(view) { ["lrnIntro", "lrnRun", "lrnDone", "lrnTestView"].forEach(id => $(id).hidden = id !== view); }
+function lrnLayout() {
+  const top = document.querySelector(".mar-bar").getBoundingClientRect().top;
+  $("learn").style.setProperty("--lrn-bottom", Math.max(0, window.innerHeight - top) + "px");
+}
+window.addEventListener("resize", () => { if (!$("learn").hidden) lrnLayout(); });
+function openLearn(view) {
+  closeSettings(); stopAll();
+  if (S.editBars) setEditBars(false);
+  $("lrnProfName").textContent = prof().name;
+  $("lrnTitle").textContent = view === "test" ? "Erkennung testen: " + prof().name : "Einlernen: " + prof().name;
+  const [dlo, dhi] = S.range === "custom" ? [S.lo, S.hi] : S.range === "auto" ? [45, 96] : RANGES[S.range];
+  fillNoteSelect($("lrnLo"), 36, 108, natDown(dlo)); fillNoteSelect($("lrnHi"), 36, 108, natUp(dhi));
+  const used = [...usedSet()].filter(m => !S.missing.has(m));
+  $("lrnPieceCount").textContent = used.length; $("lrnScopePieceWrap").hidden = !used.length;
+  $("lrnSkipDone").checked = Object.keys(prof().templates).length > 0;
+  L.saved = { range: S.range, lo: S.lo, hi: S.hi };
+  $("learn").hidden = false; lrnLayout(); $("profQuick").disabled = true; $("editBars").disabled = true;
+  if (view === "test") startTest(); else lrnShow("lrnIntro");
+}
+function showLearnRange(lo, hi) { S.range = "custom"; S.lo = lo; S.hi = hi; buildMarimba(); }
+function restoreRange() { if (!L.saved) return; S.range = L.saved.range; S.lo = L.saved.lo; S.hi = L.saved.hi; L.saved = null; buildMarimba(); if (S.events.length) setCurrent(S.idx); }
+function closeLearn() {
+  L.listen = false; L.test = false; L.phase = ""; clearTimeout(L.wait);
+  bars.forEach(b => b.classList.remove("target"));
+  $("learn").hidden = true; restoreRange(); updProfUI(); $("profQuick").disabled = false; $("editBars").disabled = false;
+  if (S.micOn && S.mode !== "practice") micStop();
+}
+$("learnStart").onclick = () => openLearn("learn");
+$("testStart").onclick = () => openLearn("test");
+$("lrnClose").onclick = closeLearn;
+$("lrnFinish").onclick = closeLearn;
+$("tstClose").onclick = closeLearn;
+$("lrnTest").onclick = () => startTest();
+
+async function ensureMic() {
+  if (S.micOn) return true;
+  try { await micStart(); return true; }
+  catch { micUnavailable(); return false; }
+}
+$("lrnGo").onclick = async () => {
+  const scope = document.querySelector('input[name="lrnScope"]:checked').value;
+  let list;
+  if (scope === "piece") list = [...usedSet()].filter(m => !S.missing.has(m)).sort((a, b) => a - b);
+  else { const lo = +$("lrnLo").value, hi = +$("lrnHi").value; list = []; for (let m = Math.min(lo, hi); m <= Math.max(lo, hi); m++) if (!S.missing.has(m)) list.push(m); }
+  if ($("lrnSkipDone").checked) list = list.filter(m => !prof().templates[m]);
+  if (!list.length) { setMsg("Alle gewählten Platten sind schon eingelernt."); closeLearn(); return; }
+  if (!(await ensureMic())) { $("lrnFb").textContent = ""; closeLearn(); setMsg("Ohne Mikrofon kann die App nicht einlernen.", "bad"); return; }
+  L.list = list; L.i = 0; L.k = 0; L.hits = [];
+  showLearnRange(Math.min(...list), Math.max(...list));
+  lrnShow("lrnRun");
+  // Schritt 1: Ruhe – Hintergrundgeräusche lernen
+  L.phase = "noise"; L.noiseN = 0; L.listen = false; noiseF = null;
+  $("lrnNote").textContent = "Pssst …"; $("lrnKind").textContent = "Ruhe bitte";
+  $("lrnDesc").textContent = "Bitte 3 Sekunden nichts anschlagen. Die App hört sich die Geräusche im Raum an, damit sie sie später ignorieren kann.";
+  $("lrnDots").style.visibility = "hidden"; $("lrnFb").textContent = ""; $("lrnCount").textContent = "Vorbereitung"; $("lrnBar").style.width = "0";
+  const t0 = performance.now();
+  const waitNoise = () => {
+    if ($("learn").hidden) return;
+    const el = performance.now() - t0;
+    if (el < 3000 || (L.noiseN < 3 && el < 6000)) { L.wait = setTimeout(waitNoise, 200); return; }
+    if (noiseF) prof().noise = Array.from(noiseF, x => +x.toPrecision(3));
+    L.phase = "bars"; L.listen = true; $("lrnDots").style.visibility = ""; lrnStep();
+  };
+  waitNoise();
+};
+function lrnStep() {
+  const m = L.list[L.i], kind = KINDS[L.k];
+  bars.forEach(b => b.classList.remove("target", "ok"));
+  const b = bars.get(m); if (b) b.classList.add("target");
+  revealBars([m]);
+  $("lrnNote").textContent = NAMES[pc(m)] + (Math.floor(m / 12) - 1);
+  $("lrnKind").textContent = kind.t; $("lrnDesc").textContent = kind.d;
+  $("lrnCount").textContent = "Platte " + (L.i + 1) + " von " + L.list.length;
+  $("lrnBar").style.width = Math.round((L.i + L.k / 3) / L.list.length * 100) + "%";
+  [...$("lrnDots").children].forEach((d, i) => { d.className = i < L.k ? "done" : i === L.k ? "cur" : ""; });
+  $("lrnBack").disabled = L.i === 0 && L.k === 0;
+}
+// Prüft, ob der Anschlag zur leuchtenden Platte passt (Grundton oder typische Obertöne)
+function plausible(o, m) {
+  const i = m - F_LO; let g = 0, near = 0;
+  for (let j = 0; j < FN; j++) {
+    const x = Math.max(0, o.fa[j] - 3 * (noiseF ? noiseF[j] : 0));
+    if (x > g) g = x;
+    const d = j - i;
+    if (Math.abs(d) <= 1 || Math.abs(d - 12) <= 1 || Math.abs(d - 24) <= 1) near = Math.max(near, x);
+  }
+  return g > 0 && near >= 0.35 * g;
+}
+function learnOnset(o) {
+  if (L.test) { testOnset(o); return; }
+  if (L.phase !== "bars") return;
+  const m = L.list[L.i], v = fingerprint(o);
+  if (!v) return;
+  if (!plausible(o, m)) {
+    $("lrnFb").className = "lrn-fb bad";
+    $("lrnFb").textContent = "Das klang nicht nach " + NAMES[pc(m)] + (Math.floor(m / 12) - 1) + ". Bitte die leuchtende Platte anschlagen.";
+    return;
+  }
+  L.hits.push({ v, peak: L.peak || 0 });
+  const kind = L.k;
+  let fb = KINDS[kind].t + " gespeichert.";
+  if (kind === 1 && L.hits[0] && L.hits[1].peak > L.hits[0].peak * 1.15) fb = "Gespeichert. Das war eher nicht leiser als der normale Schlag, ist aber in Ordnung.";
+  if (kind === 2 && L.hits[0] && L.hits[2].peak < L.hits[0].peak * 0.9) fb = "Gespeichert. Das war eher nicht lauter als der normale Schlag, ist aber in Ordnung.";
+  $("lrnFb").className = "lrn-fb ok"; $("lrnFb").textContent = fb;
+  L.k++;
+  if (L.k < 3) { lrnStep(); return; }
+  // Muster dieser Platte = Mittelwert der drei Anschläge
+  const t = new Float32Array(FN); let n = 0;
+  L.hits.forEach(h => { for (let j = 0; j < FN; j++) t[j] += h.v[j]; });
+  for (let j = 0; j < FN; j++) n += t[j] * t[j]; n = Math.sqrt(n);
+  prof().templates[m] = { v: Array.from(t, x => Math.round(x / n * 1000) / 1000), n: 3 };
+  prof().learnedAt = Date.now(); saveProfiles();
+  const b = bars.get(m); if (b) { b.classList.remove("target"); b.classList.add("ok"); }
+  L.hits = []; L.k = 0; L.i++;
+  if (L.i >= L.list.length) { lrnFinish(); return; }
+  L.listen = false;                                   // kurz warten, bis die Platte ausklingt
+  $("lrnFb").textContent = "Platte fertig. Weiter mit der nächsten …";
+  L.wait = setTimeout(() => { if ($("learn").hidden) return; L.listen = true; lrnStep(); }, 900);
+}
+function lrnFinish() {
+  L.listen = false; L.phase = "";
+  bars.forEach(b => b.classList.remove("target", "ok"));
+  $("lrnBar").style.width = "100%";
+  const n = Object.keys(prof().templates).length;
+  $("lrnDoneTxt").textContent = "„" + prof().name + "“ kennt jetzt " + n + " Platten. Beim Üben und Durchspielen nutzt die App ab sofort diese Klangmuster und lernt bei sicheren Treffern weiter dazu.";
+  lrnShow("lrnDone"); updProfUI();
+}
+$("lrnSkip").onclick = () => { L.hits = []; L.k = 0; L.i++; if (L.i >= L.list.length) lrnFinish(); else { $("lrnFb").textContent = ""; lrnStep(); } };
+$("lrnRedo").onclick = () => { L.hits = []; L.k = 0; $("lrnFb").textContent = ""; lrnStep(); };
+$("lrnBack").onclick = () => { L.hits = []; L.k = 0; if (L.i > 0) L.i--; $("lrnFb").textContent = ""; lrnStep(); };
+
+/* ---------- Erkennung testen ---------- */
+async function startTest() {
+  if (!(await ensureMic())) { closeLearn(); setMsg("Ohne Mikrofon kann die Erkennung nicht getestet werden.", "bad"); return; }
+  const keys = learnedNotes();
+  if (keys.length) showLearnRange(natDown(Math.min(...keys)), natUp(Math.max(...keys)));
+  L.test = true; L.listen = true; L.phase = "test";
+  $("tstNote").textContent = "–"; $("tstConf").textContent = "Schlag eine Platte an"; $("tstAlt").textContent = "";
+  lrnShow("lrnTestView");
+}
+function testOnset(o) {
+  const v = fingerprint(o); if (!v) return;
+  const r = recognize(v, null);
+  if (!r) { $("tstNote").textContent = "–"; $("tstConf").textContent = "Noch nichts eingelernt"; return; }
+  $("tstNote").textContent = r.notes.map(m => NAMES[pc(m)] + (Math.floor(m / 12) - 1)).join(" + ");
+  $("tstConf").textContent = Math.round(Math.max(0, r.sim) * 100) + " % Übereinstimmung" + (r.sure ? "" : " · unsicher");
+  $("tstConf").style.color = r.sure ? "var(--ok)" : "var(--late)";
+  $("tstAlt").textContent = r.sure ? "" : "Bei „unsicher“ wartet die App beim Üben auf einen weiteren Anschlag, statt einen Fehler zu zählen.";
+  flash(r.notes, r.sure ? "ok" : "part", 700);
+}
+
+/* Bereich und fehlende Platten gehören zum aktiven Instrument */
+["range", "lo", "hi"].forEach(id => $(id).addEventListener("change", () => profSync()));
+$("missReset").addEventListener("click", () => profSync());
+
 buildMarimba();
 updTempo();
+applyProfile();
 startup();
 })();
 </script>
