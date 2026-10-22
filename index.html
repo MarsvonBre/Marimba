@@ -454,7 +454,7 @@ select,input[type=number]{font:inherit;font-size:14px;padding:7px 8px;border-rad
 <script>
 (() => {
 "use strict";
-const APP_VERSION = "9.15";
+const APP_VERSION = "9.16";
 const $ = id => document.getElementById(id);
 const NAMES = ["C","Cis","D","Dis","E","F","Fis","G","Gis","A","B","H"];
 const isAcc = m => [1,3,6,8,10].includes(((m % 12) + 12) % 12);
@@ -1650,9 +1650,9 @@ function handleFile(f) {
 /* ---------- Vorgespeicherte Stücke aus dem Ordner „stuecke“ der Webseite ---------- */
 // Liste: stuecke/liste.json (optional, [{"datei":"x.mxl","titel":"…"}]) oder automatisch über GitHub
 const PRESET_EXT = /\.(mxl|musicxml|xml|mid|midi)$/i;
-let presetCache = null;
+let presetCache = null, presetCacheAt = 0;
 async function loadPresetList() {
-  if (presetCache) return presetCache;
+  if (presetCache && Date.now() - presetCacheAt < 60000) return presetCache;
   if (!/^https?:$/.test(location.protocol)) return [];
   let list = null;
   try {
@@ -1663,13 +1663,14 @@ async function loadPresetList() {
     try {
       const owner = location.hostname.split(".")[0], repo = location.pathname.split("/").filter(Boolean)[0];
       if (repo) {
-        const r = await fetch("https://api.github.com/repos/" + owner + "/" + repo + "/contents/stuecke", { cache: "no-store" });
+        const hdr = (typeof GH !== "undefined" && GH.token) ? { headers: { "Authorization": "Bearer " + GH.token, "Accept": "application/vnd.github+json" } } : {};
+        const r = await fetch("https://api.github.com/repos/" + ((typeof GH !== "undefined" && GH.repo) || (owner + "/" + repo)) + "/contents/stuecke?t=" + Date.now(), Object.assign({ cache: "no-store" }, hdr));
         if (r.ok) list = (await r.json()).filter(f => f.type === "file" && PRESET_EXT.test(f.name))
           .map(f => ({ path: "stuecke/" + f.name, name: f.name.replace(PRESET_EXT, "").replace(/[_]+/g, " ") }));
       }
     } catch {}
   }
-  if (list) { list.sort((a, b) => a.name.localeCompare(b.name, "de")); store.set("presetList", list); presetCache = list; return list; }
+  if (list) { list.sort((a, b) => a.name.localeCompare(b.name, "de")); store.set("presetList", list); presetCache = list; presetCacheAt = Date.now(); return list; }
   return store.get("presetList", []);   // ohne Verbindung: zuletzt bekannte Liste
 }
 async function openPreset(item) {
@@ -1719,6 +1720,9 @@ async function renderLib() {
   const presetSlot = document.createElement("li"); presetSlot.className = "lib-wait"; presetSlot.textContent = "Lädt …"; list.appendChild(presetSlot);
   loadPresetList().then(pl => {
     presetSlot.remove();
+    pl = pl.slice();
+    presetRecs.forEach(r => { if (!pl.some(i => i.path === r.presetPath)) pl.push({ path: r.presetPath, name: r.name || r.presetPath.replace(/^stuecke\//, "").replace(PRESET_EXT, "").replace(/_+/g, " ") }); });
+    pl.sort((a, b) => a.name.localeCompare(b.name, "de"));
     const frag = document.createDocumentFragment();
     pl.forEach(item => {
       const rec = presetRecs.find(r => r.presetPath === item.path);
@@ -1830,7 +1834,7 @@ async function uploadPiece(id) {
     // Lokale Kopie wird zum vorgespeicherten Stück, Tempo und Takte bleiben erhalten
     rec.presetPath = path; rec.name = f.name.replace(PRESET_EXT, "").replace(/_+/g, " ");
     await DB.put(rec);
-    presetCache = null;
+    presetCache = null; presetCacheAt = 0;
     setMsg("„" + rec.name + "“ ist jetzt unter „Vorgespeichert“, auf allen Geräten.", "ok");
   } catch (e) {
     setMsg(e && e.message === "auth" ? "GitHub hat den Zugangsschlüssel abgelehnt. Prüfe ihn in den Einstellungen (Rechte: Contents, Read and write)." : "Hochladen hat nicht geklappt. Prüfe die Internetverbindung und versuche es noch einmal.", "bad");
