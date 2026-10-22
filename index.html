@@ -302,7 +302,7 @@ select,input[type=number]{font:inherit;font-size:14px;padding:7px 8px;border-rad
               <span class="field-lbl">Fehlende Platten</span>
               <span class="pair"><span id="missList" class="field-sub">Keine</span><button type="button" id="missReset">Alle zurück</button></span>
             </div>
-            <label>Oktave verschieben (so spielst du die Stimme)
+            <label>Oktave verschieben (für dieses Stück)
               <select id="octShift">
                 <option value="-2">2 Oktaven tiefer</option>
                 <option value="-1">1 Oktave tiefer</option>
@@ -463,7 +463,7 @@ select,input[type=number]{font:inherit;font-size:14px;padding:7px 8px;border-rad
 <script>
 (() => {
 "use strict";
-const APP_VERSION = "9.17";
+const APP_VERSION = "9.18";
 const $ = id => document.getElementById(id);
 const NAMES = ["C","Cis","D","Dis","E","F","Fis","G","Gis","A","B","H"];
 const isAcc = m => [1,3,6,8,10].includes(((m % 12) + 12) % 12);
@@ -504,6 +504,14 @@ function prepareXml(text) {
   let doc;
   try { doc = new DOMParser().parseFromString(text, "application/xml"); } catch { return text; }
   if (!doc || doc.getElementsByTagName("parsererror").length) return text;
+  // Violinschlüssel mit kleiner 8 darunter: klingt eine Oktave tiefer, auf der Marimba spielt man wie geschrieben
+  S.octAuto = false;
+  if (S.octShift == null) {
+    const cl = [...doc.querySelectorAll("clef")].find(c => (c.querySelector("sign") || {}).textContent === "G");
+    const oc = cl ? parseInt((cl.querySelector("clef-octave-change") || {}).textContent || "0", 10) || 0 : 0;
+    S.octShift = oc < 0 ? Math.min(2, -oc) : 0;
+    S.octAuto = S.octShift !== 0;
+  }
   const k = doc.querySelector("key > fifths");
   const fifths = k ? parseInt(k.textContent, 10) || 0 : 0;
   const counts = {}, groups = [];
@@ -563,7 +571,9 @@ function dispRange() {
 // Spielt dein Instrument die Stimme höher oder tiefer, wird das ganze Stück verschoben:
 // leuchtende Platten, Marimba-Anzeige, Erkennung und Klang
 function shiftEvents(evs) {
-  const d = 12 * (S.octShift || 0); if (!d) return;
+  if (S.octShift == null) S.octShift = 0;
+  $("octShift").value = String(S.octShift);
+  const d = 12 * S.octShift; if (!d) return;
   evs.forEach(e => {
     e.notes = e.notes.map(m => m + d);
     if (e.info) { const n = {}; Object.keys(e.info).forEach(k => n[+k + d] = e.info[k]); e.info = n; }
@@ -571,7 +581,7 @@ function shiftEvents(evs) {
 }
 function detRange() {
   if (S.octFree) return [36, 108];
-  const [lo, hi] = dispRange(); return [Math.max(21, lo - 12), Math.min(108, hi + 12)];
+  const [lo, hi] = dispRange(); return [Math.max(36, lo - 12), Math.min(108, hi + 12)];   // nie unter C2 (65 Hz): darunter nur Brummen
 }
 function computeAuto() {
   const all = S.events.flatMap(e => e.notes);
@@ -592,7 +602,7 @@ const store = {
 const S = {
   events: [], idx: 0, mode: "play", playing: false, tempo: 100, bpm: 80, beatsPerBar: 4,
   range: store.get("range", "auto"), size: +store.get("size", 26) || 26, sens: store.get("sens", 6),
-  octFree: store.get("octFree", false), octShift: +store.get("octShift", 0) || 0, sound: store.get("sound", true), metro: store.get("metro", false), rollLong: store.get("rollLong", false),
+  octFree: store.get("octFree", false), octShift: 0, octAuto: false, sound: store.get("sound", true), metro: store.get("metro", false), rollLong: store.get("rollLong", false),
   strict: store.get("strict", "normal"), lo: store.get("lo", 45), hi: store.get("hi", 96), autoRange: null,
   nameMode: store.get("nameMode", "played") === "line" ? "line" : "played", showNames: store.get("showNames", true), spell: {}, keyFifths: 0, keyAltered: new Set(), rawXml: null, rawName: "",
   missing: new Set(store.get("missing", [])), editBars: false,
@@ -699,6 +709,10 @@ function buildMarimba() {
       const h = NMAX - (NMAX - NMIN) * t;
       b.classList.add("bar", "nat");
       Object.assign(b.style, { left: natX[m] + "px", top: (AMAX + RAIL) + "px", width: W + "px", height: h + "px" });
+    }
+    {   // Schriftgröße so wählen, dass lange Namen (Ges, Des, Ces) auf die Platte passen
+      const bw = isAcc(m) ? Math.round(W * 0.82) : W, len = pcName(m).length + (m % 12 === 0 ? 0.7 : 0);
+      b.firstChild.style.fontSize = Math.max(7, Math.min(isAcc(m) ? 10 : 11, Math.floor((bw - 2) / (len * 0.62)))) + "px";
     }
     b.addEventListener("pointerdown", e => { e.preventDefault(); tap(m); });
     b.addEventListener("keydown", e => { if (e.key === "Enter" || e.key === " ") { e.preventDefault(); tap(m); } });
@@ -1263,7 +1277,7 @@ function updScore() { $("hits").textContent = S.hits; $("misses").textContent = 
 
 /* ---------- Mikrofon: Tonhöhe erkennen ---------- */
 let stream = null, anBig = null, anSmall = null, spec = null, td = null, micRaf = 0;
-let floorRms = 0.002, prevRms = 0, lastOnset = 0;
+let floorRms = 0.002, prevRms = 0, lastOnset = 0, noiseSpec = {}, noiseTick = 0;
 async function micStart() {
   if (!navigator.mediaDevices || !navigator.mediaDevices.getUserMedia) throw new Error("nomic");
   setSession("play-and-record");
@@ -1274,7 +1288,7 @@ async function micStart() {
   anSmall = c.createAnalyser(); anSmall.fftSize = 1024; anSmall.smoothingTimeConstant = 0;
   src.connect(anBig); src.connect(anSmall);
   spec = new Float32Array(anBig.frequencyBinCount); td = new Float32Array(1024);
-  S.micOn = true; $("meter").hidden = false;
+  S.micOn = true; $("meter").hidden = false; noiseSpec = {};
   fillSinks();
   $("micBtn").setAttribute("aria-pressed", "true"); $("micTxt").textContent = "Hört zu";
   const loop = () => {
@@ -1287,6 +1301,11 @@ async function micStart() {
     const thr = Math.max(floorRms * (9 - 6 * sens), 0.035 - 0.03 * sens);
     if (rms < floorRms * 2.5) floorRms = floorRms * 0.97 + rms * 0.03;
     const now = performance.now();
+    // In ruhigen Momenten das Hintergrundgeräusch je Ton lernen (z. B. 50-Hz-Brummen, Lüfter)
+    if (rms < Math.min(thr * 0.7, floorRms * 2.5) && now - lastOnset > 600 && ++noiseTick % 6 === 0) {
+      const sc = scan();
+      for (const m in sc) noiseSpec[m] = noiseSpec[m] === undefined ? sc[m] : noiseSpec[m] * 0.85 + sc[m] * 0.15;
+    }
     if (rms > thr && rms > prevRms * 1.35 && now - lastOnset > 110 && (S.mode === "practice" || S.run)) {
       lastOnset = now;
       const o = { t: now, base: scan(), acc: {} };
@@ -1326,7 +1345,7 @@ function accum(o) {
 function analyze(acc) {
   const [lo, hi] = detRange(), s = {};
   for (let m = lo; m <= hi; m++) {
-    let v = acc[m] || 0;
+    let v = Math.max(0, (acc[m] || 0) - 3 * (noiseSpec[m] || 0));   // Dauergeräusch abziehen
     if (acc[m - 24] > 0.15 * v) v *= 0.25;      // Oberton zwei Oktaven über einem tieferen Ton
     else if (acc[m - 12] > 0.6 * v) v *= 0.5;   // Oktav-Verwechslung
     s[m] = v;
@@ -1528,7 +1547,7 @@ $("sens").oninput = e => { S.sens = +e.target.value; store.set("sens", S.sens); 
 $("octFree").onchange = e => { S.octFree = e.target.checked; store.set("octFree", S.octFree); };
 $("octShift").value = String(S.octShift);
 $("octShift").onchange = async e => {
-  S.octShift = +e.target.value; store.set("octShift", S.octShift);
+  S.octShift = +e.target.value; savePieceSettings();
   if (S.source === "midi" && S.midi) { const i = S.idx; stopAll(); buildMidiEvents(); setCurrent(i); }
   else await namesChanged();
   setMsg(S.octShift ? "Das Stück wird " + Math.abs(S.octShift) + (Math.abs(S.octShift) > 1 ? " Oktaven " : " Oktave ") + (S.octShift > 0 ? "höher" : "tiefer") + " angezeigt und erkannt." : "Das Stück wird wie notiert angezeigt und erkannt.");
@@ -1610,10 +1629,12 @@ const KIND_LABEL = { xml: "MusicXML", mxl: "MusicXML (.mxl)", midi: "MIDI" };
 let persistAsked = false;
 
 async function openPiece(kind, data, fileName, rec, extra) {
+  S.octShift = rec && typeof rec.octShift === "number" ? rec.octShift : null;   // null = automatisch
   if (!rec) { $("fromM").value = ""; $("toM").value = ""; S.tempo = 100; $("tempo").value = 100; updTempo(); }
   else { $("fromM").value = rec.from || ""; $("toM").value = rec.to || ""; }
   const ok = kind === "midi" ? loadMIDI(data, fileName) : await loadXML(data, fileName);
   if (!ok) return false;
+  if (S.octAuto) setMsg("Diese Stimme ist im Violinschlüssel mit 8 notiert (klingt eine Oktave tiefer). Die App zeigt sie so, wie du sie auf der Marimba liest: 1 Oktave höher. Ändern unter Zahnrad → Oktave verschieben.");
   if (rec) {
     if (kind === "midi" && rec.track && [...$("track").options].some(o => o.value === rec.track)) { $("track").value = rec.track; buildMidiEvents(); }
     if (rec.tempo) { S.tempo = rec.tempo; $("tempo").value = rec.tempo; updTempo(); }
@@ -1629,6 +1650,7 @@ async function openPiece(kind, data, fileName, rec, extra) {
     rec.lastOpened = Date.now();
     rec.id = await DB.put(rec) || rec.id;
     S.pieceId = rec.id; store.set("lastId", rec.id);
+    if (typeof rec.octShift !== "number") savePieceSettings();
     if (!persistAsked && navigator.storage && navigator.storage.persist) { persistAsked = true; navigator.storage.persist().catch(() => {}); }
   } catch { S.pieceId = null; }
   return true;
@@ -1640,13 +1662,13 @@ function savePieceSettings() {
   saveTimer = setTimeout(async () => {
     try {
       const rec = await DB.get(S.pieceId); if (!rec) return;
-      rec.tempo = S.tempo; rec.from = $("fromM").value; rec.to = $("toM").value;
+      rec.tempo = S.tempo; rec.from = $("fromM").value; rec.to = $("toM").value; rec.octShift = S.octShift;
       if (rec.kind === "midi") rec.track = $("track").value;
       await DB.put(rec);
     } catch {}
   }, 400);
 }
-function openSample() { S.pieceId = null; store.set("lastId", null); $("fromM").value = ""; $("toM").value = ""; S.tempo = 100; $("tempo").value = 100; updTempo(); return loadXML(sampleXML(), "Erste Schläge"); }
+function openSample() { S.octShift = 0; S.pieceId = null; store.set("lastId", null); $("fromM").value = ""; $("toM").value = ""; S.tempo = 100; $("tempo").value = 100; updTempo(); return loadXML(sampleXML(), "Erste Schläge"); }
 
 // Erkennt MIDI, .mxl (ZIP) und MusicXML am Inhalt
 function detectPiece(ab) {
