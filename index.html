@@ -571,7 +571,7 @@ select,input[type=number],input[type=text],input[type=password]{font:inherit;fon
 <script>
 (() => {
 "use strict";
-const APP_VERSION = "10";
+const APP_VERSION = "10.1";
 const $ = id => document.getElementById(id);
 const NAMES = ["C","Cis","D","Dis","E","F","Fis","G","Gis","A","B","H"];
 const isAcc = m => [1,3,6,8,10].includes(((m % 12) + 12) % 12);
@@ -1387,16 +1387,47 @@ function updScore() { $("hits").textContent = S.hits; $("misses").textContent = 
 /* ---------- Mikrofon: Tonhöhe erkennen ---------- */
 let stream = null, anBig = null, anSmall = null, spec = null, td = null, micRaf = 0;
 let floorRms = 0.002, prevRms = 0, lastOnset = 0, noiseSpec = {}, noiseTick = 0;
-async function micStart() {
-  if (!navigator.mediaDevices || !navigator.mediaDevices.getUserMedia) throw new Error("nomic");
-  setSession("play-and-record");
-  stream = await navigator.mediaDevices.getUserMedia({ audio: { echoCancellation: false, noiseSuppression: false, autoGainControl: false } });
+// Mikrofon öffnen. Auf iPads liefert Safari manchmal nur Stille, wenn die Tonausgabe schon vorher lief
+// (andere Abtastrate). Deshalb wird die Tonausgabe nach dem Öffnen neu gestartet und bei Stille ein zweiter Weg probiert.
+let micMode = +store.get("micMode", 0) || 0, micPeak = 0, micCheck = 0;
+function micConstraints(mode) {
+  return mode === 0 ? { audio: { echoCancellation: false, noiseSuppression: false, autoGainControl: false } } : { audio: true };
+}
+async function freshContext() {
+  if (ctx) { try { hush(); await ctx.close(); } catch {} }
+  ctx = null; master = null; voices.length = 0;
   const c = audio();
+  try { await c.resume(); } catch {}
+  return c;
+}
+async function micConnect(mode) {
+  if (stream) stream.getTracks().forEach(t => t.stop());
+  setSession("play-and-record");
+  stream = await navigator.mediaDevices.getUserMedia(micConstraints(mode));
+  const c = await freshContext();
   const src = c.createMediaStreamSource(stream);
   anBig = c.createAnalyser(); anBig.fftSize = 16384; anBig.smoothingTimeConstant = 0;
   anSmall = c.createAnalyser(); anSmall.fftSize = 1024; anSmall.smoothingTimeConstant = 0;
   src.connect(anBig); src.connect(anSmall);
   spec = new Float32Array(anBig.frequencyBinCount); td = new Float32Array(1024);
+  micPeak = 0;
+}
+function micWatch(tries) {
+  clearTimeout(micCheck);
+  micCheck = setTimeout(async () => {
+    if (!S.micOn || micPeak > 1e-6) return;
+    if (tries < 1) {                     // Stille: anderen Weg probieren
+      micMode = micMode ? 0 : 1;
+      try { await micConnect(micMode); store.set("micMode", micMode); micWatch(tries + 1); } catch {}
+      return;
+    }
+    setMsg("Vom Mikrofon kommt kein Ton an. Prüfe: Einstellungen → Apps → Safari → Mikrofon „Erlauben“, und in Safari „aA“ → Website-Einstellungen → Mikrofon „Erlauben“. Ist ein Bluetooth-Kopfhörer verbunden, kurz trennen. Danach die App ganz schließen und neu öffnen.", "bad");
+  }, 1800);
+}
+async function micStart() {
+  if (!navigator.mediaDevices || !navigator.mediaDevices.getUserMedia) throw new Error("nomic");
+  await micConnect(micMode);
+  micWatch(0);
   S.micOn = true; $("meter").hidden = false; noiseSpec = {};
   noiseF = prof().noise ? Float32Array.from(prof().noise) : null;
   fillSinks();
@@ -1406,6 +1437,7 @@ async function micStart() {
     anSmall.getFloatTimeDomainData(td);
     let s = 0; for (let i = 0; i < td.length; i++) s += td[i] * td[i];
     const rms = Math.sqrt(s / td.length);
+    if (rms > micPeak) micPeak = rms;
     $("meter").firstElementChild.style.width = Math.min(100, rms * 400) + "%";
     const sens = S.sens / 10;
     const thr = Math.max(floorRms * (9 - 6 * sens), 0.035 - 0.03 * sens);
@@ -1432,6 +1464,7 @@ async function micStart() {
   micRaf = requestAnimationFrame(loop);
 }
 function micStop() {
+  clearTimeout(micCheck);
   setSession("playback");
   S.micOn = false; cancelAnimationFrame(micRaf); $("meter").hidden = true;
   if (stream) stream.getTracks().forEach(t => t.stop()); stream = null;
