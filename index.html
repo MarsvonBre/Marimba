@@ -59,6 +59,8 @@ button[disabled]{opacity:.45;cursor:default}
 .sheet{flex:1;min-height:0;overflow:auto;position:relative;padding-block:12px}
 .paper{background:var(--paper);border-radius:6px;box-shadow:0 1px 2px rgba(0,0,0,.12);min-height:100%;color:#111}
 #osmd{min-height:120px}
+#osmd [data-ev]{cursor:pointer}
+#roll .chip{cursor:pointer}
 #roll{display:flex;gap:6px;overflow-x:auto;padding:18px 14px;align-items:center;min-height:120px}
 .chip{flex:none;font-family:var(--f-mono);font-size:13px;padding:8px 10px;border-radius:8px;border:1px solid #cfd5dc;background:#fff;color:#1a1f26;text-align:center}
 .chip small{display:block;font-family:var(--f-ui);font-size:10px;color:#77808c;letter-spacing:.04em}
@@ -571,7 +573,7 @@ select,input[type=number],input[type=text],input[type=password]{font:inherit;fon
 <script>
 (() => {
 "use strict";
-const APP_VERSION = "10.1";
+const APP_VERSION = "10.2";
 const $ = id => document.getElementById(id);
 const NAMES = ["C","Cis","D","Dis","E","F","Fis","G","Gis","A","B","H"];
 const isAcc = m => [1,3,6,8,10].includes(((m % 12) + 12) % 12);
@@ -888,7 +890,7 @@ async function loadXML(data, name) {
     followCursor: true, cursorsOptions: [{ type: 0, color: "#19a8ff", alpha: 0.35, follow: true }]
   });
   const origRender = osmd.render.bind(osmd);
-  osmd.render = () => { origRender(); setTimeout(repaintAll, 0); };
+  osmd.render = () => { origRender(); setTimeout(() => { repaintAll(); tagNotes(); }, 0); };
   try { await osmd.load(shown); osmd.render(); }
   catch (e) { setMsg("Die Datei ließ sich nicht als MusicXML lesen.", "bad"); return false; }
   const sheet = osmd.Sheet;
@@ -995,7 +997,7 @@ function buildMidiEvents() {
       lastM = e.measure;
     }
     const c = document.createElement("div");
-    c.className = "chip"; c.dataset.i = i;
+    c.className = "chip"; c.dataset.i = i; c.dataset.ev = i;
     c.innerHTML = "<small>Takt " + e.measure + "</small>" + e.notes.map(noteName).join(" · ");
     roll.appendChild(c); e.chip = c;
   });
@@ -1165,6 +1167,7 @@ function updPlayBtn() {
 }
 
 /* Durchspielen: einzählen, mitlaufen, Anschläge sammeln */
+let runFromIdx = false;   // true, wenn eine Note angetippt wurde: Durchspielen beginnt dort
 async function startRun() {
   if (!S.events.length) return;
   clearResults();
@@ -1173,7 +1176,9 @@ async function startRun() {
     try { await micStart(); }
     catch { micUnavailable(); setMsg("Ohne Mikrofon kannst du die Platten unten antippen. Die Aufnahme startet trotzdem.", "bad"); }
   }
-  const [a, b] = loopBounds();
+  const [la, b] = loopBounds();
+  const a = runFromIdx && S.idx > la && S.idx <= b ? S.idx : la;
+  runFromIdx = false;
   setCurrent(a);
   const e0 = S.events[a];
   const beatReal = 60 / (e0.bpm || S.bpm) / factor();
@@ -1640,6 +1645,51 @@ $("playBtn").onclick = () => {
   if (S.mode === "perform") { S.run ? finishRun(true) : startRun(); return; }
   S.playing ? stopPlay() : play();
 };
+/* ---------- Auf eine Note tippen: dort weitermachen ---------- */
+// Jede Note im Notenblatt bekommt die Nummer ihres Schlags, damit ein Tipp sie findet
+function tagNotes() {
+  if (S.source !== "xml" || !osmd) return;
+  S.events.forEach((e, i) => gEls(e).forEach(el => { el.dataset.ev = i; }));
+}
+function jumpTo(i) {
+  if (S.run || i < 0 || i >= S.events.length) return;
+  if (S.editBars) return;
+  const p = S.playing; stopPlay();
+  if (S.mode === "practice") clearColors();
+  setCurrent(i);
+  runFromIdx = S.mode === "perform";
+  const e = S.events[i];
+  setMsg((S.mode === "play" ? (p ? "Spielt weiter ab " : "Vorspielen startet ab ") : S.mode === "practice" ? "Üben ab " : "Durchspielen startet ab ") + whereText(e) + ".");
+  if (p) play();
+}
+// Tipp auf eine Note oder in ihre Nähe (bequemer mit dem Finger)
+function noteFromPoint(x, y, target) {
+  const hit = target.closest && target.closest("[data-ev]");
+  if (hit) return +hit.dataset.ev;
+  let best = -1, bd = Infinity;
+  document.querySelectorAll("#osmd [data-ev]").forEach(el => {
+    const r = el.getBoundingClientRect(); if (!r.width && !r.height) return;
+    const cx = (r.left + r.right) / 2, cy = (r.top + r.bottom) / 2;
+    const dx = Math.abs(x - cx), dy = Math.max(0, Math.abs(y - cy) - r.height / 2);
+    if (dy > 70 || dx > 45) return;
+    const d = dx + dy * 0.6;
+    if (d < bd) { bd = d; best = +el.dataset.ev; }
+  });
+  return best;
+}
+(() => {
+  let down = null;
+  const sheet = $("sheetWrap");
+  sheet.addEventListener("pointerdown", e => { down = { x: e.clientX, y: e.clientY, t: Date.now() }; });
+  sheet.addEventListener("pointerup", e => {
+    if (!down) return;
+    const moved = Math.hypot(e.clientX - down.x, e.clientY - down.y) > 10 || Date.now() - down.t > 600;
+    down = null;
+    if (moved) return;                       // war ein Scrollen, kein Tipp
+    const i = noteFromPoint(e.clientX, e.clientY, e.target);
+    if (i >= 0) jumpTo(i);
+  });
+})();
 function stepTo(i) {
   if (S.run) return;
   const p = S.playing; stopPlay(); setCurrent(i); if (p) play();
@@ -1664,7 +1714,7 @@ $("micBtn").onclick = async () => {
   }
 };
 $("resClose").onclick = () => { clearResults(); setMsg(MODE_HINT[S.mode]); };
-$("resAgain").onclick = () => { clearResults(); startRun(); };
+$("resAgain").onclick = () => { clearResults(); runFromIdx = false; startRun(); };
 $("tempo").oninput = e => {
   if (S.run) { e.target.value = S.tempo; return; }
   const now = performance.now(), st = songTime(now);
